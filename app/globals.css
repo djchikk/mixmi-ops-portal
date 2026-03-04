@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Newsreader", "Georgia", serif;
+  background: linear-gradient(145deg, #1a1614 0%, #201c18 40%, #262019 100%);
+  color: #E8DCC8;
+  min-height: 100vh;
+}

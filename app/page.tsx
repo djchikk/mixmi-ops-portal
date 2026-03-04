@@ -193,9 +193,11 @@ function LoginScreen({
 // Node Card
 // ============================================================
 
-function NodeCard({ node }: { node: PilotNode }) {
+function NodeCard({ node, onClick }: { node: PilotNode; onClick?: () => void }) {
   return (
-    <div className="bg-white/[0.04] backdrop-blur-sm rounded-xl p-5 border border-white/[0.06] hover:-translate-y-0.5 hover:border-white/[0.12] hover:bg-white/[0.06] transition-all cursor-default">
+    <div
+      onClick={onClick}
+      className="bg-white/[0.04] backdrop-blur-sm rounded-xl p-5 border border-white/[0.06] hover:-translate-y-0.5 hover:border-white/[0.12] hover:bg-white/[0.06] transition-all cursor-pointer">
       <div className="flex justify-between items-start mb-3">
         <div>
           <div className="text-base font-semibold text-[#E8DCC8] tracking-tight">
@@ -283,6 +285,151 @@ function ContactRow({ c }: { c: Contact }) {
 }
 
 // ============================================================
+// Node Detail
+// ============================================================
+
+function NodeDetail({
+  node,
+  milestones,
+  contacts,
+  engagement,
+  engagementLoading,
+  onBack,
+}: {
+  node: PilotNode;
+  milestones: Milestone[];
+  contacts: Contact[];
+  engagement: EngagementLog[];
+  engagementLoading: boolean;
+  onBack: () => void;
+}) {
+  const nodeMilestones = milestones.filter((m) => m.pilot_node_id === node.id);
+  const nodeContacts = contacts.filter((c) => c.pilot_nodes?.name === node.name);
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="mb-4 px-0 py-1 border-none bg-transparent text-[#A89878] text-sm cursor-pointer hover:text-[#D4C4A8] transition-colors"
+      >
+        ← All Nodes
+      </button>
+
+      {/* Header */}
+      <div className="bg-white/[0.04] backdrop-blur-sm rounded-2xl p-6 border border-white/[0.06] mb-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <div className="text-xl font-semibold text-[#E8DCC8] tracking-tight">
+              {node.name}
+            </div>
+            <div className="text-sm text-[#8B7B68] mt-1">
+              {node.region} · {node.country}
+            </div>
+          </div>
+          <StatusBadge status={node.status} />
+        </div>
+        <div className="text-sm text-[#A89878] leading-relaxed space-y-1.5">
+          <div>
+            <span className="text-[#8B7B68]">Lead:</span> {node.lead_name || "—"}
+          </div>
+          {node.activation_date && (
+            <div>
+              <span className="text-[#8B7B68]">Activated:</span>{" "}
+              {new Date(node.activation_date).toLocaleDateString()}
+            </div>
+          )}
+          {node.description && (
+            <div className="mt-3 text-[13px] text-[#A89878] leading-relaxed">
+              {node.description}
+            </div>
+          )}
+          {node.what_it_tests && (
+            <div className="mt-2 text-xs text-[#6B5D4D] leading-relaxed">
+              <span className="text-[#8B7B68] font-semibold">Tests:</span>{" "}
+              {node.what_it_tests}
+            </div>
+          )}
+        </div>
+        {node.tags && node.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-4">
+            {node.tags.map((tag) => (
+              <span
+                key={tag}
+                className="text-[11px] px-2 py-0.5 rounded-md bg-white/[0.06] text-[#8B7B68] font-medium"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Milestones */}
+      <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] mb-6">
+        <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
+          Milestones
+        </h3>
+        {nodeMilestones.length === 0 ? (
+          <div className="text-[#6B5D4D] text-sm italic">No milestones for this node</div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 py-1.5 border-b-2 border-white/[0.08] text-[11px] text-[#8B7B68] font-semibold uppercase tracking-wider">
+              <div className="flex-1">Milestone</div>
+              <div className="w-[70px]">Stream</div>
+              <div className="w-[90px]">Status</div>
+              <div className="w-[50px] text-right">Week</div>
+              <div className="w-[60px] text-right">Owner</div>
+            </div>
+            {nodeMilestones.map((m) => (
+              <MilestoneRow key={m.id} m={m} />
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Contacts */}
+      <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] mb-6">
+        <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
+          Contacts
+        </h3>
+        {nodeContacts.length === 0 ? (
+          <div className="text-[#6B5D4D] text-sm italic">No contacts linked to this node</div>
+        ) : (
+          nodeContacts.map((c) => <ContactRow key={c.id} c={c} />)
+        )}
+      </div>
+
+      {/* Engagement */}
+      <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06]">
+        <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
+          Engagement Log
+        </h3>
+        {engagementLoading ? (
+          <div className="text-[#6B5D4D] text-sm italic">Loading engagement...</div>
+        ) : engagement.length === 0 ? (
+          <div className="text-[#6B5D4D] text-sm italic">No engagement logged for this node</div>
+        ) : (
+          engagement.map((e) => (
+            <div key={e.id} className="py-2 border-b border-white/[0.05] text-sm">
+              <span className="text-[#8B7B68]">
+                {new Date(e.created_at).toLocaleDateString()}
+              </span>{" "}
+              <span className="text-[#A89878]">{e.title}</span>
+              {e.description && (
+                <span className="text-[#6B5D4D]"> — {e.description}</span>
+              )}
+              {e.participant_count && (
+                <span className="text-[#6B5D4D]"> ({e.participant_count} participants)</span>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Tab Button
 // ============================================================
 
@@ -329,6 +476,10 @@ export default function OpsPortal() {
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [milestoneFilter, setMilestoneFilter] = useState("all");
+
+  const [selectedNode, setSelectedNode] = useState<PilotNode | null>(null);
+  const [nodeEngagement, setNodeEngagement] = useState<EngagementLog[]>([]);
+  const [nodeEngagementLoading, setNodeEngagementLoading] = useState(false);
 
   const [nodes, setNodes] = useState<PilotNode[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -385,6 +536,22 @@ export default function OpsPortal() {
     });
   }, []);
 
+  const selectNode = useCallback((node: PilotNode) => {
+    setSelectedNode(node);
+    setNodeEngagement([]);
+    setNodeEngagementLoading(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    supabase
+      .from("engagement_logs")
+      .select("*, pilot_nodes(name)")
+      .eq("pilot_node_id", node.id)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        setNodeEngagement(data || []);
+        setNodeEngagementLoading(false);
+      });
+  }, []);
+
   if (!token) {
     return (
       <LoginScreen
@@ -419,11 +586,11 @@ export default function OpsPortal() {
           <span className="text-xs text-[#6B5D4D] italic">pilot operations</span>
         </div>
         <div className="flex gap-1 bg-white/[0.03] rounded-lg p-0.5">
-          <Tab label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
-          <Tab label="Milestones" active={tab === "milestones"} onClick={() => setTab("milestones")} count={milestones.length} />
-          <Tab label="Nodes" active={tab === "nodes"} onClick={() => setTab("nodes")} count={nodes.length} />
-          <Tab label="Contacts" active={tab === "contacts"} onClick={() => setTab("contacts")} count={contacts.length} />
-          <Tab label="Decisions" active={tab === "decisions"} onClick={() => setTab("decisions")} count={decisions.length} />
+          <Tab label="Overview" active={tab === "overview"} onClick={() => { setTab("overview"); setSelectedNode(null); }} />
+          <Tab label="Milestones" active={tab === "milestones"} onClick={() => { setTab("milestones"); setSelectedNode(null); }} count={milestones.length} />
+          <Tab label="Nodes" active={tab === "nodes"} onClick={() => { setTab("nodes"); setSelectedNode(null); }} count={nodes.length} />
+          <Tab label="Contacts" active={tab === "contacts"} onClick={() => { setTab("contacts"); setSelectedNode(null); }} count={contacts.length} />
+          <Tab label="Decisions" active={tab === "decisions"} onClick={() => { setTab("decisions"); setSelectedNode(null); }} count={decisions.length} />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -446,6 +613,17 @@ export default function OpsPortal() {
       </div>
 
       <div className="max-w-[1100px] mx-auto px-8 py-6">
+        {/* NODE DETAIL */}
+        {selectedNode ? (
+          <NodeDetail
+            node={selectedNode}
+            milestones={milestones}
+            contacts={contacts}
+            engagement={nodeEngagement}
+            engagementLoading={nodeEngagementLoading}
+            onBack={() => setSelectedNode(null)}
+          />
+        ) : <>
         {/* OVERVIEW */}
         {tab === "overview" && (
           <div>
@@ -475,7 +653,7 @@ export default function OpsPortal() {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {nodes.map((n) => (
-                  <NodeCard key={n.id} node={n} />
+                  <NodeCard key={n.id} node={n} onClick={() => selectNode(n)} />
                 ))}
               </div>
             </div>
@@ -551,7 +729,7 @@ export default function OpsPortal() {
         {tab === "nodes" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {nodes.map((n) => (
-              <NodeCard key={n.id} node={n} />
+              <NodeCard key={n.id} node={n} onClick={() => selectNode(n)} />
             ))}
           </div>
         )}
@@ -598,6 +776,7 @@ export default function OpsPortal() {
             ))}
           </div>
         )}
+        </>}
       </div>
 
       {/* Footer */}

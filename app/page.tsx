@@ -267,7 +267,8 @@ function WorksheetCard({
   worksheet: Worksheet;
   onClick: () => void;
 }) {
-  const decided = worksheet.sections.filter((s) => s.status === "decided").length;
+  const sections = worksheet.sections || [];
+  const decided = sections.filter((s) => s.status === "decided").length;
   return (
     <div
       onClick={onClick}
@@ -298,9 +299,9 @@ function WorksheetCard({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <SectionProgressBar sections={worksheet.sections} />
+        <SectionProgressBar sections={sections} />
         <span className="text-[11px] text-[#6B5D4D]">
-          {decided}/{worksheet.sections.length} decided
+          {decided}/{sections.length} decided
         </span>
       </div>
     </div>
@@ -621,12 +622,12 @@ function WorksheetDetail({
 
       {/* Sections */}
       <div className="space-y-4">
-        {worksheet.sections.length === 0 ? (
+        {(worksheet.sections || []).length === 0 ? (
           <div className="text-[#6B5D4D] text-sm italic bg-white/[0.03] rounded-xl p-6 border border-white/[0.06]">
             This worksheet has no sections yet. Add sections via Supabase.
           </div>
         ) : (
-          worksheet.sections.map((section) => (
+          (worksheet.sections || []).map((section) => (
             <SectionRenderer
               key={section.id}
               section={section}
@@ -1077,7 +1078,7 @@ export default function OpsPortal() {
   const handleSectionChange = useCallback(
     (sectionId: string, updated: WorksheetSection) => {
       if (!selectedWorksheet) return;
-      const newSections = selectedWorksheet.sections.map((s) =>
+      const newSections = (selectedWorksheet.sections || []).map((s) =>
         s.id === sectionId ? updated : s
       );
       setSelectedWorksheet({ ...selectedWorksheet, sections: newSections });

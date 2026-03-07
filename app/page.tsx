@@ -515,13 +515,46 @@ function DocSectionHeader({ title, subtitle, status }: { title: string; subtitle
   );
 }
 
+function NarrativeBody({ text }: { text: string }) {
+  // Split paragraphs and render callout-style blocks for lines that look like insights/quotes
+  const paragraphs = text.split("\n\n");
+  return (
+    <div className="space-y-3">
+      {paragraphs.map((p, i) => {
+        // Detect callout/insight blocks (starts with a label followed by colon)
+        const isCallout = /^(The .+ insight|Note|Important|Key principle)[:\s]/i.test(p.trim());
+        // Detect closing quotes
+        const isQuote = p.trim().startsWith('"') && p.trim().endsWith('"');
+
+        if (isQuote) {
+          return (
+            <blockquote key={i} className="border-l-2 border-[#C47A3A]/40 pl-4 py-1 text-[15px] text-[#D4C4A8] italic leading-[1.8]">
+              {p.trim()}
+            </blockquote>
+          );
+        }
+        if (isCallout) {
+          return (
+            <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-lg px-4 py-3 text-[14px] text-[#A89878] leading-[1.8] italic">
+              {p}
+            </div>
+          );
+        }
+        return (
+          <p key={i} className="text-[15px] text-[#A89878] leading-[1.8] whitespace-pre-wrap">
+            {p}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function NarrativeSectionRenderer({ section }: { section: NarrativeSection }) {
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} />
-      <div className="text-[15px] text-[#A89878] leading-[1.8] whitespace-pre-wrap">
-        {section.body}
-      </div>
+      <NarrativeBody text={section.body} />
     </div>
   );
 }
@@ -537,9 +570,7 @@ function PromptSectionRenderer({
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       {section.context && (
-        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
-          {section.context}
-        </div>
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
       )}
       <div className="text-[15px] text-[#D4C4A8] leading-[1.7] mb-3 font-medium italic">
         {section.prompt}
@@ -635,9 +666,7 @@ function BudgetSectionRenderer({
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       {section.context && (
-        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
-          {section.context}
-        </div>
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
       )}
       <div className="rounded-lg border border-white/[0.08] overflow-hidden">
         <table className="w-full text-sm">
@@ -735,9 +764,7 @@ function ChecklistSectionRenderer({
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       {section.context && (
-        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
-          {section.context}
-        </div>
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
       )}
       <div className="space-y-1.5">
         {items.map((item, i) => {
@@ -755,8 +782,16 @@ function ChecklistSectionRenderer({
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`text-[15px] leading-relaxed ${item.checked ? "text-[#8B7B68] line-through" : "text-[#D4C4A8]"}`}>
-                    {item.label || <span className="text-[#6B5D4D] italic">Untitled item</span>}
+                  <span className={`text-[15px] leading-[1.7] ${item.checked ? "text-[#8B7B68] line-through" : "text-[#D4C4A8]"}`}>
+                    {item.label ? (
+                      item.label.includes(" — ") ? (
+                        <>
+                          <strong className="font-semibold text-[#E8DCC8]">{item.label.split(" — ")[0]}</strong>
+                          {" — "}
+                          <span className="text-[#A89878]">{item.label.split(" — ").slice(1).join(" — ")}</span>
+                        </>
+                      ) : item.label
+                    ) : <span className="text-[#6B5D4D] italic">Untitled item</span>}
                   </span>
                   {itemSt.label && (
                     <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded" style={{ color: itemSt.color, background: `${itemSt.color}15` }}>
@@ -831,9 +866,7 @@ function MatrixSectionRenderer({
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       {section.context && (
-        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
-          {section.context}
-        </div>
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
       )}
       <div className="rounded-lg border border-white/[0.08] overflow-x-auto">
         <table className="w-full text-sm">
@@ -916,9 +949,7 @@ function RolesSectionRenderer({
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       {section.context && (
-        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
-          {section.context}
-        </div>
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
       )}
       <div className="rounded-lg border border-white/[0.08] overflow-hidden">
         <table className="w-full text-sm">

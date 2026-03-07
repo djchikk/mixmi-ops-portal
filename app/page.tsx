@@ -1567,6 +1567,9 @@ export default function OpsPortal() {
   const [engagement, setEngagement] = useState<EngagementLog[]>([]);
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
+
+  const [siteContent, setSiteContent] = useState<Record<string, string>>({});
+  const [steveImageUploading, setSteveImageUploading] = useState(false);
   const [worksheetSaving, setWorksheetSaving] = useState(false);
 
   const handleLogin = async (email: string, password: string) => {
@@ -1590,13 +1593,14 @@ export default function OpsPortal() {
     if (!token) return;
     setLoading(true);
     try {
-      const [nodesRes, msRes, contactsRes, decisionsRes, engRes, wsRes] = await Promise.all([
+      const [nodesRes, msRes, contactsRes, decisionsRes, engRes, wsRes, scRes] = await Promise.all([
         supabase.from("pilot_nodes").select("*").order("created_at"),
         supabase.from("milestones").select("*, pilot_nodes(name)").order("created_at"),
         supabase.from("community_contacts").select("*, pilot_nodes(name)").order("name"),
         supabase.from("decisions_log").select("*").order("decided_at", { ascending: false }),
         supabase.from("engagement_logs").select("*, pilot_nodes(name)").order("created_at", { ascending: false }).limit(20),
         supabase.from("worksheets").select("*, pilot_nodes(name)").order("updated_at", { ascending: false }),
+        supabase.from("site_content").select("key, value"),
       ]);
       if (nodesRes.data) setNodes(nodesRes.data);
       if (msRes.data) setMilestones(msRes.data);
@@ -1604,6 +1608,11 @@ export default function OpsPortal() {
       if (decisionsRes.data) setDecisions(decisionsRes.data);
       if (engRes.data) setEngagement(engRes.data);
       if (wsRes.data) setWorksheets(wsRes.data);
+      if (scRes.data) {
+        const map: Record<string, string> = {};
+        scRes.data.forEach((row: { key: string; value: string }) => { map[row.key] = row.value; });
+        setSiteContent(map);
+      }
     } catch (e) {
       console.error("Load error:", e);
     }
@@ -1730,6 +1739,7 @@ export default function OpsPortal() {
           <Tab label="Contacts" active={tab === "contacts"} onClick={() => { setTab("contacts"); setSelectedNode(null); setSelectedWorksheet(null); }} count={contacts.length} />
           <Tab label="Decisions" active={tab === "decisions"} onClick={() => { setTab("decisions"); setSelectedNode(null); setSelectedWorksheet(null); }} count={decisions.length} />
           <Tab label="Worksheets" active={tab === "worksheets"} onClick={() => { setTab("worksheets"); setSelectedNode(null); setSelectedWorksheet(null); }} count={worksheets.length} />
+          <Tab label="Steve Page" active={tab === "steve"} onClick={() => { setTab("steve"); setSelectedNode(null); setSelectedWorksheet(null); }} />
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -1944,6 +1954,152 @@ export default function OpsPortal() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "steve" && (
+          <div className="space-y-6">
+            <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06]">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-[#E8DCC8]">Steve Page Content</h2>
+                <a
+                  href="/steve"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[#C47A3A] hover:text-[#E8B84D] transition-colors"
+                >
+                  View live page →
+                </a>
+              </div>
+
+              {/* Narrative */}
+              <div className="mb-6">
+                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                  Narrative Message
+                </div>
+                <InlineTextarea
+                  value={siteContent.steve_narrative || ""}
+                  placeholder="Write a personal message for Steve..."
+                  rows={4}
+                  onCommit={async (val) => {
+                    setSiteContent((prev) => ({ ...prev, steve_narrative: val }));
+                    await supabase.from("site_content").upsert({ key: "steve_narrative", value: val, updated_at: new Date().toISOString() });
+                  }}
+                />
+              </div>
+
+              {/* Image */}
+              <div className="mb-6">
+                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                  Image
+                </div>
+                {siteContent.steve_image_url ? (
+                  <div className="space-y-2">
+                    <img
+                      src={siteContent.steve_image_url}
+                      alt="Steve page image"
+                      className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
+                    />
+                    <button
+                      onClick={async () => {
+                        setSiteContent((prev) => ({ ...prev, steve_image_url: "" }));
+                        await supabase.from("site_content").upsert({ key: "steve_image_url", value: "", updated_at: new Date().toISOString() });
+                      }}
+                      className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setSteveImageUploading(true);
+                        const ext = file.name.split(".").pop() || "jpg";
+                        const path = `steve/${Date.now()}.${ext}`;
+                        const { error } = await supabase.storage.from("public-media").upload(path, file);
+                        if (error) {
+                          console.error("Upload error:", error);
+                          setSteveImageUploading(false);
+                          return;
+                        }
+                        const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
+                        const publicUrl = urlData.publicUrl;
+                        setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
+                        await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
+                        setSteveImageUploading(false);
+                      }}
+                      className="text-sm text-[#A89878] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-white/[0.1] file:bg-white/[0.04] file:text-[#D4C4A8] file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-white/[0.08] file:transition-colors"
+                    />
+                    {steveImageUploading && (
+                      <span className="text-xs text-[#E8B84D] ml-2 animate-pulse">Uploading...</span>
+                    )}
+                  </div>
+                )}
+                <div className="mt-2">
+                  <InlineField
+                    value={siteContent.steve_image_caption || ""}
+                    placeholder="Image caption (optional)"
+                    onCommit={async (val) => {
+                      setSiteContent((prev) => ({ ...prev, steve_image_caption: val }));
+                      await supabase.from("site_content").upsert({ key: "steve_image_caption", value: val, updated_at: new Date().toISOString() });
+                    }}
+                    className="text-sm text-[#8B7B68]"
+                  />
+                </div>
+              </div>
+
+              {/* Video */}
+              <div className="mb-6">
+                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                  Video (YouTube or Vimeo URL)
+                </div>
+                <InlineField
+                  value={siteContent.steve_video_url || ""}
+                  placeholder="Paste YouTube or Vimeo URL..."
+                  onCommit={async (val) => {
+                    setSiteContent((prev) => ({ ...prev, steve_video_url: val }));
+                    await supabase.from("site_content").upsert({ key: "steve_video_url", value: val, updated_at: new Date().toISOString() });
+                  }}
+                  className="text-sm text-[#D4C4A8]"
+                />
+                {siteContent.steve_video_url && (() => {
+                  const url = siteContent.steve_video_url;
+                  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+                  const embedUrl = ytMatch
+                    ? `https://www.youtube.com/embed/${ytMatch[1]}`
+                    : vimeoMatch
+                    ? `https://player.vimeo.com/video/${vimeoMatch[1]}`
+                    : null;
+                  if (!embedUrl) return null;
+                  return (
+                    <div className="mt-3 aspect-video rounded-lg overflow-hidden border border-white/[0.08] max-w-md">
+                      <iframe src={embedUrl} title="Video preview" allowFullScreen className="w-full h-full" />
+                    </div>
+                  );
+                })()}
+                <div className="mt-2">
+                  <InlineField
+                    value={siteContent.steve_video_caption || ""}
+                    placeholder="Video caption (optional)"
+                    onCommit={async (val) => {
+                      setSiteContent((prev) => ({ ...prev, steve_video_caption: val }));
+                      await supabase.from("site_content").upsert({ key: "steve_video_caption", value: val, updated_at: new Date().toISOString() });
+                    }}
+                    className="text-sm text-[#8B7B68]"
+                  />
+                </div>
+              </div>
+
+              <div className="text-xs text-[#6B5D4D] mt-4 italic">
+                Changes save automatically and appear on /steve immediately.
+              </div>
+            </div>
           </div>
         )}
         </>}

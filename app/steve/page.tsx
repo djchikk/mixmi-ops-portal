@@ -51,11 +51,27 @@ const streamColors: Record<string, string> = {
   ops: "#6B7B9E",
 };
 
+const FALLBACK_NARRATIVE = `We're in the first weeks of activating four pilot communities across Kenya, the US, and beyond. The ops infrastructure is live, the team is coordinating through AI-powered tools, and our first content uploads are on the horizon.`;
+
 // ============================================================
-// The narrative Sandy can edit here
+// Helpers
 // ============================================================
 
-const NARRATIVE = `We're in the first weeks of activating four pilot communities across Kenya, the US, and beyond. The ops infrastructure is live, the team is coordinating through AI-powered tools, and our first content uploads are on the horizon.`;
+function parseVideoEmbed(url: string): { type: "youtube" | "vimeo" | "unknown"; embedUrl: string } {
+  // YouTube: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/embed/ID
+  const ytMatch = url.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (ytMatch) {
+    return { type: "youtube", embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}` };
+  }
+  // Vimeo: vimeo.com/ID
+  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeoMatch) {
+    return { type: "vimeo", embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}` };
+  }
+  return { type: "unknown", embedUrl: url };
+}
 
 // ============================================================
 // Small components
@@ -116,12 +132,13 @@ export default function StevePage() {
   const [nodes, setNodes] = useState<PilotNode[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [contactCount, setContactCount] = useState(0);
+  const [content, setContent] = useState<Record<string, string>>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [nodesRes, msRes, contactsRes] = await Promise.all([
+      const [nodesRes, msRes, contactsRes, contentRes] = await Promise.all([
         supabase
           .from("pilot_nodes")
           .select("id, name, region, country, lead_name, status, what_it_tests")
@@ -135,12 +152,21 @@ export default function StevePage() {
         supabase
           .from("community_contacts")
           .select("id", { count: "exact", head: true }),
+        supabase
+          .from("site_content")
+          .select("key, value")
+          .in("key", [
+            "steve_narrative",
+            "steve_image_url",
+            "steve_image_caption",
+            "steve_video_url",
+            "steve_video_caption",
+          ]),
       ]);
 
       if (nodesRes.data) setNodes(nodesRes.data);
       if (msRes.data) {
         setMilestones(msRes.data);
-        // Find most recent update
         const dates = msRes.data
           .map((m) => m.updated_at)
           .filter(Boolean)
@@ -149,12 +175,26 @@ export default function StevePage() {
         if (dates.length > 0) setLastUpdated(dates[0]!);
       }
       if (contactsRes.count != null) setContactCount(contactsRes.count);
+      if (contentRes.data) {
+        const map: Record<string, string> = {};
+        contentRes.data.forEach((row: { key: string; value: string }) => {
+          map[row.key] = row.value;
+        });
+        setContent(map);
+      }
       setLoading(false);
     }
     load();
   }, []);
 
   // Derived data
+  const narrative = content.steve_narrative || FALLBACK_NARRATIVE;
+  const imageUrl = content.steve_image_url || "";
+  const imageCaption = content.steve_image_caption || "";
+  const videoUrl = content.steve_video_url || "";
+  const videoCaption = content.steve_video_caption || "";
+  const hasMedia = imageUrl.trim() !== "" || videoUrl.trim() !== "";
+
   const activeNodeCount = nodes.filter((n) =>
     ["activating", "active", "scaling"].includes(n.status)
   ).length;
@@ -239,12 +279,72 @@ export default function StevePage() {
           <FadeIn delay={100}>
             <section className="mb-16">
               <div className="border-l-2 border-[#C47A3A]/40 pl-6 py-2">
-                <p className="text-xl sm:text-[22px] text-[#D4C4A8] leading-relaxed font-light">
-                  {NARRATIVE}
+                <p className="text-xl sm:text-[22px] text-[#D4C4A8] leading-relaxed font-light whitespace-pre-line">
+                  {narrative}
                 </p>
               </div>
             </section>
           </FadeIn>
+
+          {/* ── Media (image + video) ── */}
+          {hasMedia && (
+            <FadeIn delay={150}>
+              <section className="mb-16 space-y-8">
+                {imageUrl.trim() && (
+                  <div>
+                    <img
+                      src={imageUrl}
+                      alt={imageCaption || "Mixmi pilot"}
+                      className="w-full rounded-xl border border-white/[0.08] object-cover max-h-[480px]"
+                    />
+                    {imageCaption && (
+                      <p className="text-[13px] text-[#8B7B68] mt-2 text-center italic">
+                        {imageCaption}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {videoUrl.trim() && (() => {
+                  const { type, embedUrl } = parseVideoEmbed(videoUrl);
+                  if (type === "unknown") {
+                    return (
+                      <div>
+                        <a
+                          href={videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#C47A3A] hover:text-[#E8B84D] transition-colors text-sm"
+                        >
+                          Watch video →
+                        </a>
+                        {videoCaption && (
+                          <p className="text-[13px] text-[#8B7B68] mt-1 italic">{videoCaption}</p>
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div>
+                      <div className="aspect-video rounded-xl overflow-hidden border border-white/[0.08]">
+                        <iframe
+                          src={embedUrl}
+                          title={videoCaption || "Video"}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="w-full h-full"
+                        />
+                      </div>
+                      {videoCaption && (
+                        <p className="text-[13px] text-[#8B7B68] mt-2 text-center italic">
+                          {videoCaption}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </section>
+            </FadeIn>
+          )}
 
           {/* ── Key Numbers ── */}
           <FadeIn delay={200}>

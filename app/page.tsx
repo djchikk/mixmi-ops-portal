@@ -2019,18 +2019,22 @@ export default function OpsPortal() {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         setSteveImageUploading(true);
-                        const ext = file.name.split(".").pop() || "jpg";
-                        const path = `steve/${Date.now()}.${ext}`;
-                        const { error } = await supabase.storage.from("public-media").upload(path, file);
-                        if (error) {
-                          console.error("Upload error:", error);
-                          setSteveImageUploading(false);
-                          return;
+                        try {
+                          const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+                          const path = `steve/${Date.now()}.${ext}`;
+                          const { error } = await supabase.storage.from("public-media").upload(path, file, { upsert: true });
+                          if (error) {
+                            alert(`Upload failed: ${error.message}`);
+                            setSteveImageUploading(false);
+                            return;
+                          }
+                          const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
+                          const publicUrl = urlData.publicUrl;
+                          setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
+                          await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
+                        } catch (err) {
+                          alert(`Upload error: ${err}`);
                         }
-                        const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
-                        const publicUrl = urlData.publicUrl;
-                        setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
-                        await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
                         setSteveImageUploading(false);
                       }}
                       className="text-sm text-[#A89878] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-white/[0.1] file:bg-white/[0.04] file:text-[#D4C4A8] file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-white/[0.08] file:transition-colors"

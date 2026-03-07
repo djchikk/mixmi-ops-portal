@@ -112,7 +112,7 @@ function StreamBadge({ stream }: { stream: string }) {
       className="inline-block px-2 py-0.5 rounded-lg text-[11px] font-semibold tracking-wider uppercase text-white/90"
       style={{ background: streamColors[stream] || "#666" }}
     >
-      {stream}
+      {stream === "pilot" ? "seed" : stream}
     </span>
   );
 }
@@ -523,12 +523,12 @@ export default function NodeProgressPage() {
             </section>
           </FadeIn>
 
-          {/* ── Node Progress Timeline ── */}
+          {/* ── Seed Node Progress ── */}
           {allNodes.length > 0 && (
             <FadeIn delay={250}>
               <section className="mb-16">
                 <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
-                  All Nodes
+                  Seed Nodes
                 </h2>
                 <div className="bg-white/[0.03] rounded-xl p-5 border border-white/[0.06]">
                   <NodeProgressTimeline nodes={allNodes} highlightNodeId={node?.id} />

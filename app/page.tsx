@@ -274,7 +274,7 @@ function StreamBadge({ stream }: { stream: string }) {
       className="inline-block px-2 py-0.5 rounded-lg text-[11px] font-semibold tracking-wider uppercase text-white/90"
       style={{ background: streamColors[stream] || "#666" }}
     >
-      {stream}
+      {stream === "pilot" ? "seed" : stream}
     </span>
   );
 }
@@ -1480,7 +1480,7 @@ function NodeDetail({
         onClick={onBack}
         className="mb-4 px-0 py-1 border-none bg-transparent text-[#A89878] text-sm cursor-pointer hover:text-[#D4C4A8] transition-colors"
       >
-        ← All Nodes
+        ← All Seed Nodes
       </button>
 
       {/* Header */}
@@ -1913,7 +1913,7 @@ export default function OpsPortal() {
           <span className="text-[22px] font-light text-[#D4C4A8] tracking-tight">
             mixmi <span className="font-semibold">ops</span>
           </span>
-          <span className="text-xs text-[#6B5D4D] italic">pilot operations</span>
+          <span className="text-xs text-[#6B5D4D] italic">seed node operations</span>
         </div>
         <div className="flex gap-1 bg-white/[0.03] rounded-lg p-0.5">
           <Tab label="Overview" active={tab === "overview"} onClick={() => { setTab("overview"); setSelectedNode(null); setSelectedWorksheet(null); }} />
@@ -1968,7 +1968,7 @@ export default function OpsPortal() {
         {tab === "overview" && (
           <div>
             <div className="flex gap-4 mb-7">
-              <Stat label="Pilot Nodes" value={scopedNodes.length} color="#5DBF82" />
+              <Stat label="Seed Nodes" value={scopedNodes.length} color="#5DBF82" />
               <Stat label="Activating" value={activeNodes.length} color="#E8B84D" />
               <Stat label="In Progress" value={activeMilestones.length} color="#D4884A" />
               <Stat label="Completed" value={doneMilestones.length} color="#5DBF82" />
@@ -1979,7 +1979,7 @@ export default function OpsPortal() {
             {scopedNodes.length > 0 && (
               <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] mb-6">
                 <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
-                  Node Progress
+                  Seed Node Progress
                 </h3>
                 <NodeProgressTimeline nodes={scopedNodes} />
               </div>
@@ -1998,7 +1998,7 @@ export default function OpsPortal() {
 
             <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] mb-6">
               <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
-                Pilot Nodes
+                Seed Nodes
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {scopedNodes.map((n) => (
@@ -2056,7 +2056,7 @@ export default function OpsPortal() {
                       color: milestoneFilter === f ? "#fff" : "#8B7B68",
                     }}
                   >
-                    {f}
+                    {f === "pilot" ? "seed" : f}
                   </button>
                 ))}
               </div>

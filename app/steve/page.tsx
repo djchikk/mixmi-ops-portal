@@ -51,7 +51,7 @@ const streamColors: Record<string, string> = {
   ops: "#6B7B9E",
 };
 
-const FALLBACK_NARRATIVE = `We're in the first weeks of activating four pilot communities across Kenya, the US, and beyond. The ops infrastructure is live, the team is coordinating through AI-powered tools, and our first content uploads are on the horizon.`;
+const FALLBACK_NARRATIVE = `We're in the first weeks of activating four seed communities across Kenya, the US, and beyond. The ops infrastructure is live, the team is coordinating through AI-powered tools, and our first content uploads are on the horizon.`;
 
 // ============================================================
 // Helpers
@@ -95,7 +95,7 @@ function StreamBadge({ stream }: { stream: string }) {
       className="inline-block px-2 py-0.5 rounded-lg text-[11px] font-semibold tracking-wider uppercase text-white/90"
       style={{ background: streamColors[stream] || "#666" }}
     >
-      {stream}
+      {stream === "pilot" ? "seed" : stream}
     </span>
   );
 }
@@ -322,7 +322,7 @@ export default function StevePage() {
                 mixmi
               </h1>
               <p className="text-lg text-[#8B7B68] tracking-widest uppercase font-semibold">
-                Pilot Progress
+                Seed Node Progress
               </p>
               {lastUpdated && (
                 <p className="text-xs text-[#6B5D4D] mt-3">
@@ -356,7 +356,7 @@ export default function StevePage() {
                   <div>
                     <img
                       src={imageUrl}
-                      alt={imageCaption || "Mixmi pilot"}
+                      alt={imageCaption || "Mixmi seed node"}
                       className="w-full rounded-xl border border-white/[0.08] object-cover max-h-[480px]"
                     />
                     {imageCaption && (
@@ -433,7 +433,7 @@ export default function StevePage() {
             </FadeIn>
           )}
 
-          {/* ── Pilot Nodes ── */}
+          {/* ── Seed Communities ── */}
           <FadeIn delay={350}>
             <section className="mb-16">
               <button
@@ -441,7 +441,7 @@ export default function StevePage() {
                 className="flex items-center gap-2 mb-4 group bg-transparent border-none cursor-pointer p-0"
               >
                 <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold">
-                  Pilot Communities
+                  Seed Communities
                 </h2>
                 <span className={`text-[#6B5D4D] text-xs transition-transform duration-200 ${nodesExpanded ? "rotate-90" : ""}`}>
                   ▶

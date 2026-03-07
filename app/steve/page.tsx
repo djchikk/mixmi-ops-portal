@@ -129,6 +129,14 @@ function NodeProgressTimeline({
   nodes: { id: string; name: string; status: string }[];
   highlightNodeId?: string;
 }) {
+  const statusPriority: Record<string, number> = { activating: 0, active: 1, scaling: 2, planning: 3 };
+  const sorted = [...nodes].sort((a, b) => {
+    const aIsKenya = a.name.toLowerCase().includes("kenya") ? 0 : 1;
+    const bIsKenya = b.name.toLowerCase().includes("kenya") ? 0 : 1;
+    if (aIsKenya !== bIsKenya) return aIsKenya - bIsKenya;
+    return (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9);
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex justify-between text-[10px] text-[#6B5D4D] uppercase tracking-widest font-semibold px-1">
@@ -136,7 +144,7 @@ function NodeProgressTimeline({
           <span key={s}>{s}</span>
         ))}
       </div>
-      {nodes.map((node) => {
+      {sorted.map((node) => {
         const pct = nodeStagePercent[node.status] || 5;
         const color = nodeStageColors[node.status] || "#7A7A7A";
         const isMuted = highlightNodeId != null && node.id !== highlightNodeId;
@@ -195,7 +203,6 @@ export default function StevePage() {
         supabase
           .from("pilot_nodes")
           .select("id, name, region, country, lead_name, status, what_it_tests")
-          .neq("status", "planning")
           .order("created_at"),
         supabase
           .from("milestones")

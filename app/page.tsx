@@ -372,29 +372,30 @@ function BudgetSectionEditor({
   section: BudgetSection;
   onChange: (updated: BudgetSection) => void;
 }) {
+  const rows = section.rows || [];
   const updateRow = (idx: number, field: keyof BudgetRow, value: string | number | null) => {
-    const rows = [...section.rows];
-    rows[idx] = { ...rows[idx], [field]: value };
-    const updated = { ...section, rows };
+    const newRows = [...rows];
+    newRows[idx] = { ...newRows[idx], [field]: value };
+    const updated = { ...section, rows: newRows };
     if (updated.status === "blank") updated.status = "in_progress";
     onChange(updated);
   };
   const addRow = () => {
     onChange({
       ...section,
-      rows: [...section.rows, { label: "", amount: null, notes: "" }],
+      rows: [...rows, { label: "", amount: null, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
   const removeRow = (idx: number) => {
-    const rows = section.rows.filter((_, i) => i !== idx);
-    onChange({ ...section, rows });
+    const newRows = rows.filter((_, i) => i !== idx);
+    onChange({ ...section, rows: newRows });
   };
-  const total = section.rows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const total = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
 
   return (
     <div className="space-y-2">
-      {section.rows.map((row, i) => (
+      {rows.map((row, i) => (
         <div key={i} className="flex gap-2 items-center">
           <input
             value={row.label}
@@ -447,28 +448,29 @@ function ChecklistSectionEditor({
   section: ChecklistSection;
   onChange: (updated: ChecklistSection) => void;
 }) {
+  const items = section.items || [];
   const updateItem = (idx: number, field: keyof ChecklistItem, value: string | boolean) => {
-    const items = [...section.items];
-    items[idx] = { ...items[idx], [field]: value };
-    const updated = { ...section, items };
+    const newItems = [...items];
+    newItems[idx] = { ...newItems[idx], [field]: value };
+    const updated = { ...section, items: newItems };
     if (updated.status === "blank") updated.status = "in_progress";
     onChange(updated);
   };
   const addItem = () => {
     onChange({
       ...section,
-      items: [...section.items, { label: "", checked: false, notes: "" }],
+      items: [...items, { label: "", checked: false, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
   const removeItem = (idx: number) => {
-    const items = section.items.filter((_, i) => i !== idx);
-    onChange({ ...section, items });
+    const newItems = items.filter((_, i) => i !== idx);
+    onChange({ ...section, items: newItems });
   };
 
   return (
     <div className="space-y-2">
-      {section.items.map((item, i) => (
+      {items.map((item, i) => (
         <div key={i} className="flex gap-2 items-center">
           <input
             type="checkbox"

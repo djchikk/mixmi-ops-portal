@@ -65,25 +65,42 @@ interface EngagementLog {
 
 // -- Worksheet types --
 
+type SectionStatus = "blank" | "in_progress" | "decided";
+
+interface NarrativeSection {
+  id: string;
+  title: string;
+  type: "narrative";
+  status: SectionStatus;
+  body: string;
+  subtitle?: string;
+}
+
 interface PromptSection {
   id: string;
   title: string;
   type: "prompt";
-  status: "blank" | "in_progress" | "decided";
+  status: SectionStatus;
+  context?: string;
   prompt: string;
   response: string;
+  notes?: string;
+  subtitle?: string;
 }
 
 interface TextSection {
   id: string;
   title: string;
   type: "text";
-  status: "blank" | "in_progress" | "decided";
+  status: SectionStatus;
   content: string;
+  subtitle?: string;
 }
 
 interface BudgetRow {
   label: string;
+  low?: number | null;
+  high?: number | null;
   amount: number | null;
   notes: string;
 }
@@ -92,34 +109,80 @@ interface BudgetSection {
   id: string;
   title: string;
   type: "budget";
-  status: "blank" | "in_progress" | "decided";
+  status: SectionStatus;
+  context?: string;
   rows: BudgetRow[];
+  subtitle?: string;
 }
 
 interface ChecklistItem {
   label: string;
   checked: boolean;
   notes: string;
+  item_status?: "blank" | "confirmed" | "rejected" | "needs_discussion";
 }
 
 interface ChecklistSection {
   id: string;
   title: string;
   type: "checklist";
-  status: "blank" | "in_progress" | "decided";
+  status: SectionStatus;
+  context?: string;
   items: ChecklistItem[];
+  subtitle?: string;
+}
+
+interface MatrixCell {
+  value: string;
+  cell_status?: "not_started" | "in_progress" | "done" | "blocked";
+}
+
+interface MatrixSection {
+  id: string;
+  title: string;
+  type: "matrix";
+  status: SectionStatus;
+  context?: string;
+  columns: string[];
+  rows: { label: string; cells: MatrixCell[] }[];
+  subtitle?: string;
+}
+
+interface RoleCard {
+  person: string;
+  leads: string;
+  responsibilities: string;
+}
+
+interface RolesSection {
+  id: string;
+  title: string;
+  type: "roles";
+  status: SectionStatus;
+  context?: string;
+  roles: RoleCard[];
+  subtitle?: string;
 }
 
 interface MediaSection {
   id: string;
   title: string;
   type: "media";
-  status: "blank" | "in_progress" | "decided";
+  status: SectionStatus;
   url: string;
   caption: string;
+  subtitle?: string;
 }
 
-type WorksheetSection = PromptSection | TextSection | BudgetSection | ChecklistSection | MediaSection;
+type WorksheetSection =
+  | NarrativeSection
+  | PromptSection
+  | TextSection
+  | BudgetSection
+  | ChecklistSection
+  | MatrixSection
+  | RolesSection
+  | MediaSection;
 
 interface Worksheet {
   id: string;
@@ -312,7 +375,7 @@ function WorksheetCard({
 // Inline Edit Primitives
 // ============================================================
 
-function InlineText({
+function InlineField({
   value,
   placeholder,
   onCommit,
@@ -325,23 +388,17 @@ function InlineText({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-
-  const commit = () => {
-    setEditing(false);
-    if (draft !== value) onCommit(draft);
-  };
-
+  const commit = () => { setEditing(false); if (draft !== value) onCommit(draft); };
   if (!editing) {
     return (
-      <div
+      <span
         onClick={() => { setDraft(value); setEditing(true); }}
-        className={`px-2.5 py-1.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors min-h-[32px] ${className || ""}`}
+        className={`inline-block px-1.5 py-0.5 rounded border border-transparent cursor-pointer hover:border-white/[0.15] transition-colors ${className || ""}`}
       >
         {value || <span className="text-[#6B5D4D] italic">{placeholder}</span>}
-      </div>
+      </span>
     );
   }
-
   return (
     <input
       autoFocus
@@ -350,7 +407,7 @@ function InlineText({
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
       placeholder={placeholder}
-      className={`px-2.5 py-1.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors ${className || ""}`}
+      className={`px-1.5 py-0.5 rounded border border-white/[0.15] bg-white/[0.04] text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]/60 transition-colors ${className || ""}`}
     />
   );
 }
@@ -359,33 +416,28 @@ function InlineNumber({
   value,
   placeholder,
   onCommit,
+  prefix,
   className,
 }: {
   value: number | null;
   placeholder: string;
   onCommit: (value: number | null) => void;
+  prefix?: string;
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value?.toString() ?? "");
-
-  const commit = () => {
-    setEditing(false);
-    const num = draft ? Number(draft) : null;
-    if (num !== value) onCommit(num);
-  };
-
+  const commit = () => { setEditing(false); const num = draft ? Number(draft) : null; if (num !== value) onCommit(num); };
   if (!editing) {
     return (
-      <div
+      <span
         onClick={() => { setDraft(value?.toString() ?? ""); setEditing(true); }}
-        className={`px-2.5 py-1.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors text-right min-h-[32px] ${className || ""}`}
+        className={`inline-block px-1.5 py-0.5 rounded border border-transparent cursor-pointer hover:border-white/[0.15] transition-colors text-right ${className || ""}`}
       >
-        {value != null ? `$${value.toLocaleString()}` : <span className="text-[#6B5D4D] italic">{placeholder}</span>}
-      </div>
+        {value != null ? `${prefix || ""}${value.toLocaleString()}` : <span className="text-[#6B5D4D] italic">{placeholder}</span>}
+      </span>
     );
   }
-
   return (
     <input
       autoFocus
@@ -395,7 +447,7 @@ function InlineNumber({
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
       placeholder={placeholder}
-      className={`px-2.5 py-1.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors text-right ${className || ""}`}
+      className={`px-1.5 py-0.5 rounded border border-white/[0.15] bg-white/[0.04] text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]/60 transition-colors text-right ${className || ""}`}
     />
   );
 }
@@ -413,23 +465,17 @@ function InlineTextarea({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-
-  const commit = () => {
-    setEditing(false);
-    if (draft !== value) onCommit(draft);
-  };
-
+  const commit = () => { setEditing(false); if (draft !== value) onCommit(draft); };
   if (!editing) {
     return (
       <div
         onClick={() => { setDraft(value); setEditing(true); }}
-        className="w-full px-3 py-2.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors min-h-[60px] whitespace-pre-wrap leading-relaxed"
+        className="w-full px-3 py-2 rounded-lg border border-white/[0.08] text-[15px] text-[#D4C4A8] cursor-pointer hover:border-white/[0.15] transition-colors min-h-[48px] whitespace-pre-wrap leading-[1.7] bg-white/[0.02]"
       >
         {value || <span className="text-[#6B5D4D] italic">{placeholder}</span>}
       </div>
     );
   }
-
   return (
     <textarea
       autoFocus
@@ -439,16 +485,48 @@ function InlineTextarea({
       onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
       placeholder={placeholder}
       rows={rows || 4}
-      className="w-full px-3 py-2.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors resize-y"
+      className="w-full px-3 py-2 rounded-lg border border-[#C47A3A]/60 bg-white/[0.04] text-[15px] text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors resize-y leading-[1.7]"
     />
   );
 }
 
 // ============================================================
-// Section Editors
+// Document-Style Section Renderers
 // ============================================================
 
-function PromptSectionEditor({
+function DocSectionHeader({ title, subtitle, status }: { title: string; subtitle?: string; status?: SectionStatus }) {
+  const statusCfg = status ? (sectionStatusConfig[status] || sectionStatusConfig.blank) : null;
+  return (
+    <div className="mb-4">
+      <div className="flex items-baseline gap-3">
+        <h3 className="text-lg font-semibold text-[#E8DCC8] tracking-tight leading-snug">
+          {title}
+        </h3>
+        {statusCfg && status !== "blank" && (
+          <span className="text-[11px] font-medium tracking-wide" style={{ color: statusCfg.color }}>
+            {statusCfg.label}
+          </span>
+        )}
+      </div>
+      {subtitle && (
+        <div className="text-[13px] text-[#8B7B68] mt-1 italic">{subtitle}</div>
+      )}
+    </div>
+  );
+}
+
+function NarrativeSectionRenderer({ section }: { section: NarrativeSection }) {
+  return (
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} />
+      <div className="text-[15px] text-[#A89878] leading-[1.8] whitespace-pre-wrap">
+        {section.body}
+      </div>
+    </div>
+  );
+}
+
+function PromptSectionRenderer({
   section,
   onCommit,
 }: {
@@ -456,8 +534,14 @@ function PromptSectionEditor({
   onCommit: (updated: PromptSection) => void;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="text-sm text-[#A89878] leading-relaxed bg-white/[0.03] rounded-lg p-3 border border-white/[0.06]">
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      {section.context && (
+        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
+          {section.context}
+        </div>
+      )}
+      <div className="text-[15px] text-[#D4C4A8] leading-[1.7] mb-3 font-medium italic">
         {section.prompt}
       </div>
       <InlineTextarea
@@ -469,11 +553,24 @@ function PromptSectionEditor({
           onCommit(updated);
         }}
       />
+      {section.notes !== undefined && (
+        <div className="mt-3">
+          <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-1">Notes / Follow-up</div>
+          <InlineTextarea
+            value={section.notes || ""}
+            placeholder="Add notes, flags, or follow-up questions..."
+            rows={2}
+            onCommit={(val) => {
+              onCommit({ ...section, notes: val });
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function TextSectionEditor({
+function TextSectionRenderer({
   section,
   onCommit,
 }: {
@@ -481,20 +578,30 @@ function TextSectionEditor({
   onCommit: (updated: TextSection) => void;
 }) {
   return (
-    <InlineTextarea
-      value={section.content}
-      placeholder="Click to write..."
-      rows={5}
-      onCommit={(val) => {
-        const updated = { ...section, content: val };
-        if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
-        onCommit(updated);
-      }}
-    />
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      <InlineTextarea
+        value={section.content}
+        placeholder="Click to write..."
+        rows={5}
+        onCommit={(val) => {
+          const updated = { ...section, content: val };
+          if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
+          onCommit(updated);
+        }}
+      />
+    </div>
   );
 }
 
-function BudgetSectionEditor({
+const checklistItemStatusConfig: Record<string, { color: string; label: string; icon: string }> = {
+  blank: { color: "#7A7A7A", label: "", icon: "" },
+  confirmed: { color: "#5DBF82", label: "confirmed", icon: "✓" },
+  rejected: { color: "#D45A5A", label: "rejected", icon: "✕" },
+  needs_discussion: { color: "#E8B84D", label: "discuss", icon: "?" },
+};
+
+function BudgetSectionRenderer({
   section,
   onCommit,
 }: {
@@ -502,6 +609,7 @@ function BudgetSectionEditor({
   onCommit: (updated: BudgetSection) => void;
 }) {
   const rows = section.rows || [];
+  const hasRanges = rows.some((r) => r.low != null || r.high != null);
 
   const commitRow = (idx: number, field: keyof BudgetRow, value: string | number | null) => {
     const newRows = [...rows];
@@ -514,64 +622,91 @@ function BudgetSectionEditor({
   const addRow = () => {
     onCommit({
       ...section,
-      rows: [...rows, { label: "", amount: null, notes: "" }],
+      rows: [...rows, { label: "", low: null, high: null, amount: null, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
 
-  const removeRow = (idx: number) => {
-    const newRows = rows.filter((_, i) => i !== idx);
-    onCommit({ ...section, rows: newRows });
-  };
-
-  const total = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalActual = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalLow = rows.reduce((sum, r) => sum + (r.low || 0), 0);
+  const totalHigh = rows.reduce((sum, r) => sum + (r.high || 0), 0);
 
   return (
-    <div className="space-y-2">
-      {rows.map((row, i) => (
-        <div key={i} className="flex gap-2 items-center">
-          <InlineText
-            value={row.label}
-            placeholder="Item"
-            onCommit={(val) => commitRow(i, "label", val)}
-            className="flex-1"
-          />
-          <InlineNumber
-            value={row.amount}
-            placeholder="$0"
-            onCommit={(val) => commitRow(i, "amount", val)}
-            className="w-24"
-          />
-          <InlineText
-            value={row.notes}
-            placeholder="Notes"
-            onCommit={(val) => commitRow(i, "notes", val)}
-            className="w-32"
-          />
-          <button
-            onClick={() => removeRow(i)}
-            className="text-[#6B5D4D] hover:text-[#D45A5A] bg-transparent border-none cursor-pointer text-sm"
-          >
-            ×
-          </button>
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      {section.context && (
+        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
+          {section.context}
         </div>
-      ))}
-      <div className="flex justify-between items-center pt-2">
+      )}
+      <div className="rounded-lg border border-white/[0.08] overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/[0.08]">
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold">Item</th>
+              {hasRanges && (
+                <>
+                  <th className="text-right px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-24">Low</th>
+                  <th className="text-right px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-24">High</th>
+                </>
+              )}
+              <th className="text-right px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-24">Actual</th>
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className={`border-b border-white/[0.04] ${i % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
+                <td className="px-3 py-1.5 text-[#D4C4A8]">
+                  <InlineField value={row.label} placeholder="Item" onCommit={(val) => commitRow(i, "label", val)} />
+                </td>
+                {hasRanges && (
+                  <>
+                    <td className="px-3 py-1.5">
+                      <InlineNumber value={row.low ?? null} placeholder="—" prefix="$" onCommit={(val) => commitRow(i, "low", val)} className="w-full text-sm text-[#8B7B68]" />
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <InlineNumber value={row.high ?? null} placeholder="—" prefix="$" onCommit={(val) => commitRow(i, "high", val)} className="w-full text-sm text-[#8B7B68]" />
+                    </td>
+                  </>
+                )}
+                <td className="px-3 py-1.5">
+                  <InlineNumber value={row.amount} placeholder="—" prefix="$" onCommit={(val) => commitRow(i, "amount", val)} className="w-full text-sm text-[#D4C4A8] font-medium" />
+                </td>
+                <td className="px-3 py-1.5">
+                  <InlineField value={row.notes} placeholder="—" onCommit={(val) => commitRow(i, "notes", val)} className="text-sm text-[#8B7B68]" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-white/[0.08]">
+              <td className="px-3 py-2.5 text-[#D4C4A8] font-semibold">Total</td>
+              {hasRanges && (
+                <>
+                  <td className="px-3 py-2.5 text-right text-[#8B7B68] font-medium">${totalLow.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-right text-[#8B7B68] font-medium">${totalHigh.toLocaleString()}</td>
+                </>
+              )}
+              <td className="px-3 py-2.5 text-right text-[#D4C4A8] font-semibold">${totalActual.toLocaleString()}</td>
+              <td className="px-3 py-2.5" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div className="mt-2">
         <button
           onClick={addRow}
-          className="text-xs text-[#A89878] hover:text-[#D4C4A8] bg-transparent border-none cursor-pointer"
+          className="text-xs text-[#8B7B68] hover:text-[#D4C4A8] bg-transparent border-none cursor-pointer"
         >
           + Add row
         </button>
-        <div className="text-sm font-semibold text-[#D4C4A8]">
-          Total: ${total.toLocaleString()}
-        </div>
       </div>
     </div>
   );
 }
 
-function ChecklistSectionEditor({
+function ChecklistSectionRenderer({
   section,
   onCommit,
 }: {
@@ -580,9 +715,9 @@ function ChecklistSectionEditor({
 }) {
   const items = section.items || [];
 
-  const commitItem = (idx: number, field: keyof ChecklistItem, value: string | boolean) => {
+  const commitItem = (idx: number, updates: Partial<ChecklistItem>) => {
     const newItems = [...items];
-    newItems[idx] = { ...newItems[idx], [field]: value };
+    newItems[idx] = { ...newItems[idx], ...updates };
     const updated = { ...section, items: newItems };
     if (updated.status === "blank") updated.status = "in_progress";
     onCommit(updated);
@@ -591,52 +726,226 @@ function ChecklistSectionEditor({
   const addItem = () => {
     onCommit({
       ...section,
-      items: [...items, { label: "", checked: false, notes: "" }],
+      items: [...items, { label: "", checked: false, notes: "", item_status: "blank" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
 
-  const removeItem = (idx: number) => {
-    const newItems = items.filter((_, i) => i !== idx);
-    onCommit({ ...section, items: newItems });
-  };
-
   return (
-    <div className="space-y-2">
-      {items.map((item, i) => (
-        <div key={i} className="flex gap-2 items-center">
-          <input
-            type="checkbox"
-            checked={item.checked}
-            onChange={(e) => commitItem(i, "checked", e.target.checked)}
-            className="accent-[#5DBF82] w-4 h-4 cursor-pointer"
-          />
-          <InlineText
-            value={item.label}
-            placeholder="Item"
-            onCommit={(val) => commitItem(i, "label", val)}
-            className="flex-1"
-          />
-          <InlineText
-            value={item.notes}
-            placeholder="Notes"
-            onCommit={(val) => commitItem(i, "notes", val)}
-            className="w-32"
-          />
-          <button
-            onClick={() => removeItem(i)}
-            className="text-[#6B5D4D] hover:text-[#D45A5A] bg-transparent border-none cursor-pointer text-sm"
-          >
-            ×
-          </button>
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      {section.context && (
+        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
+          {section.context}
         </div>
-      ))}
+      )}
+      <div className="space-y-1.5">
+        {items.map((item, i) => {
+          const itemSt = checklistItemStatusConfig[item.item_status || "blank"] || checklistItemStatusConfig.blank;
+          return (
+            <div key={i} className="flex items-start gap-3 py-1.5 group">
+              <input
+                type="checkbox"
+                checked={item.checked}
+                onChange={(e) => commitItem(i, {
+                  checked: e.target.checked,
+                  item_status: e.target.checked ? "confirmed" : (item.item_status === "confirmed" ? "blank" : item.item_status),
+                })}
+                className="accent-[#5DBF82] w-4 h-4 cursor-pointer mt-1 shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[15px] leading-relaxed ${item.checked ? "text-[#8B7B68] line-through" : "text-[#D4C4A8]"}`}>
+                    {item.label || <span className="text-[#6B5D4D] italic">Untitled item</span>}
+                  </span>
+                  {itemSt.label && (
+                    <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded" style={{ color: itemSt.color, background: `${itemSt.color}15` }}>
+                      {itemSt.icon} {itemSt.label}
+                    </span>
+                  )}
+                </div>
+                {(item.notes || true) && (
+                  <InlineField
+                    value={item.notes}
+                    placeholder="Add notes..."
+                    onCommit={(val) => commitItem(i, { notes: val })}
+                    className="text-[13px] text-[#8B7B68] mt-0.5 block"
+                  />
+                )}
+              </div>
+              <select
+                value={item.item_status || "blank"}
+                onChange={(e) => commitItem(i, {
+                  item_status: e.target.value as ChecklistItem["item_status"],
+                  checked: e.target.value === "confirmed",
+                })}
+                className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[11px] px-1 py-0.5 rounded border border-white/[0.1] bg-[#1A1816] text-[#8B7B68] focus:outline-none cursor-pointer shrink-0"
+              >
+                <option value="blank">—</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="rejected">Rejected</option>
+                <option value="needs_discussion">Discuss</option>
+              </select>
+            </div>
+          );
+        })}
+      </div>
       <button
         onClick={addItem}
-        className="text-xs text-[#A89878] hover:text-[#D4C4A8] bg-transparent border-none cursor-pointer"
+        className="mt-2 text-xs text-[#8B7B68] hover:text-[#D4C4A8] bg-transparent border-none cursor-pointer"
       >
         + Add item
       </button>
+    </div>
+  );
+}
+
+const matrixCellColors: Record<string, { color: string; bg: string }> = {
+  not_started: { color: "#7A7A7A", bg: "transparent" },
+  in_progress: { color: "#E8B84D", bg: "#332A18" },
+  done: { color: "#5DBF82", bg: "#1A2E22" },
+  blocked: { color: "#D45A5A", bg: "#331A1A" },
+};
+
+function MatrixSectionRenderer({
+  section,
+  onCommit,
+}: {
+  section: MatrixSection;
+  onCommit: (updated: MatrixSection) => void;
+}) {
+  const matrixRows = section.rows || [];
+  const columns = section.columns || [];
+
+  const commitCell = (rowIdx: number, colIdx: number, updates: Partial<MatrixCell>) => {
+    const newRows = [...matrixRows];
+    const cells = [...(newRows[rowIdx].cells || [])];
+    cells[colIdx] = { ...(cells[colIdx] || { value: "" }), ...updates };
+    newRows[rowIdx] = { ...newRows[rowIdx], cells };
+    const updated = { ...section, rows: newRows };
+    if (updated.status === "blank") updated.status = "in_progress";
+    onCommit(updated);
+  };
+
+  return (
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      {section.context && (
+        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
+          {section.context}
+        </div>
+      )}
+      <div className="rounded-lg border border-white/[0.08] overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/[0.08]">
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[140px]">Area</th>
+              {columns.map((col, ci) => (
+                <th key={ci} className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[180px]">{col}</th>
+              ))}
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-24">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matrixRows.map((row, ri) => (
+              <tr key={ri} className={`border-b border-white/[0.04] ${ri % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
+                <td className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">{row.label}</td>
+                {columns.map((_, ci) => {
+                  const cell = row.cells?.[ci] || { value: "", cell_status: "not_started" };
+                  return (
+                    <td key={ci} className="px-3 py-2 align-top">
+                      <InlineField
+                        value={cell.value}
+                        placeholder="—"
+                        onCommit={(val) => commitCell(ri, ci, { value: val })}
+                        className="text-[13px] text-[#A89878] leading-relaxed"
+                      />
+                    </td>
+                  );
+                })}
+                <td className="px-3 py-2 align-top">
+                  {(() => {
+                    const lastCell = row.cells?.[columns.length - 1] || row.cells?.[0];
+                    const st = lastCell?.cell_status || "not_started";
+                    const cfg = matrixCellColors[st] || matrixCellColors.not_started;
+                    return (
+                      <select
+                        value={st}
+                        onChange={(e) => {
+                          const colIdx = columns.length - 1;
+                          commitCell(ri, Math.max(colIdx, 0), { cell_status: e.target.value as MatrixCell["cell_status"] });
+                        }}
+                        className="text-[11px] px-1.5 py-1 rounded border border-white/[0.08] bg-[#1A1816] focus:outline-none cursor-pointer"
+                        style={{ color: cfg.color }}
+                      >
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+                    );
+                  })()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RolesSectionRenderer({
+  section,
+  onCommit,
+}: {
+  section: RolesSection;
+  onCommit: (updated: RolesSection) => void;
+}) {
+  const roles = section.roles || [];
+
+  const commitRole = (idx: number, field: keyof RoleCard, value: string) => {
+    const newRoles = [...roles];
+    newRoles[idx] = { ...newRoles[idx], [field]: value };
+    const updated = { ...section, roles: newRoles };
+    if (updated.status === "blank") updated.status = "in_progress";
+    onCommit(updated);
+  };
+
+  return (
+    <div>
+      <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      {section.context && (
+        <div className="text-[15px] text-[#A89878] leading-[1.8] mb-4 whitespace-pre-wrap">
+          {section.context}
+        </div>
+      )}
+      <div className="rounded-lg border border-white/[0.08] overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/[0.08]">
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-32">Person</th>
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-40">Leads</th>
+              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold">Key Responsibilities</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roles.map((role, i) => (
+              <tr key={i} className={`border-b border-white/[0.04] ${i % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
+                <td className="px-3 py-2 align-top">
+                  <InlineField value={role.person} placeholder="Name" onCommit={(val) => commitRole(i, "person", val)} className="text-[#D4C4A8] font-medium" />
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <InlineField value={role.leads} placeholder="Area" onCommit={(val) => commitRole(i, "leads", val)} className="text-[#A89878]" />
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <InlineField value={role.responsibilities} placeholder="Responsibilities" onCommit={(val) => commitRole(i, "responsibilities", val)} className="text-[#A89878] text-[13px] leading-relaxed" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -648,34 +957,34 @@ function SectionRenderer({
   section: WorksheetSection;
   onCommit: (updated: WorksheetSection) => void;
 }) {
-  const statusCfg = sectionStatusConfig[section.status] || sectionStatusConfig.blank;
   return (
-    <div className="bg-white/[0.03] rounded-xl p-5 border border-white/[0.06]">
-      <div className="flex justify-between items-center mb-3">
-        <h4 className="text-sm font-semibold text-[#D4C4A8] tracking-tight">
-          {section.title}
-        </h4>
-        <span
-          className="text-[11px] font-semibold tracking-wide"
-          style={{ color: statusCfg.color }}
-        >
-          {statusCfg.label}
-        </span>
-      </div>
+    <div className="py-6 border-b border-white/[0.05] last:border-b-0">
+      {section.type === "narrative" && (
+        <NarrativeSectionRenderer section={section} />
+      )}
       {section.type === "prompt" && (
-        <PromptSectionEditor section={section} onCommit={onCommit as (u: PromptSection) => void} />
+        <PromptSectionRenderer section={section} onCommit={onCommit as (u: PromptSection) => void} />
       )}
       {section.type === "text" && (
-        <TextSectionEditor section={section} onCommit={onCommit as (u: TextSection) => void} />
+        <TextSectionRenderer section={section} onCommit={onCommit as (u: TextSection) => void} />
       )}
       {section.type === "budget" && (
-        <BudgetSectionEditor section={section} onCommit={onCommit as (u: BudgetSection) => void} />
+        <BudgetSectionRenderer section={section} onCommit={onCommit as (u: BudgetSection) => void} />
       )}
       {section.type === "checklist" && (
-        <ChecklistSectionEditor section={section} onCommit={onCommit as (u: ChecklistSection) => void} />
+        <ChecklistSectionRenderer section={section} onCommit={onCommit as (u: ChecklistSection) => void} />
+      )}
+      {section.type === "matrix" && (
+        <MatrixSectionRenderer section={section} onCommit={onCommit as (u: MatrixSection) => void} />
+      )}
+      {section.type === "roles" && (
+        <RolesSectionRenderer section={section} onCommit={onCommit as (u: RolesSection) => void} />
       )}
       {section.type === "media" && (
-        <div className="text-sm text-[#6B5D4D] italic">Media sections coming soon</div>
+        <div>
+          <DocSectionHeader title={section.title} />
+          <div className="text-sm text-[#6B5D4D] italic">Media upload coming soon</div>
+        </div>
       )}
     </div>
   );
@@ -698,59 +1007,52 @@ function WorksheetDetail({
   onPhaseCommit: (phase: string) => void;
   onBack: () => void;
 }) {
+  const sections = worksheet.sections || [];
   return (
-    <div>
+    <div className="max-w-[820px] mx-auto">
       <button
         onClick={onBack}
-        className="mb-4 px-0 py-1 border-none bg-transparent text-[#A89878] text-sm cursor-pointer hover:text-[#D4C4A8] transition-colors"
+        className="mb-6 px-0 py-1 border-none bg-transparent text-[#A89878] text-sm cursor-pointer hover:text-[#D4C4A8] transition-colors"
       >
         &larr; All Worksheets
       </button>
 
-      {/* Header */}
-      <div className="bg-white/[0.04] backdrop-blur-sm rounded-2xl p-6 border border-white/[0.06] mb-6">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1 min-w-0">
-            <div className="text-xl font-semibold text-[#E8DCC8] tracking-tight">
-              {worksheet.title}
-            </div>
-            {worksheet.description && (
-              <div className="text-sm text-[#8B7B68] mt-1">{worksheet.description}</div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <select
-              value={worksheet.phase}
-              onChange={(e) => onPhaseCommit(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-[#1A1816] text-sm text-[#D4C4A8] focus:outline-none focus:border-[#C47A3A] cursor-pointer"
-            >
-              <option value="draft">Draft</option>
-              <option value="working">Working</option>
-              <option value="processed">Processed</option>
-            </select>
-            {saving && (
-              <span className="text-xs text-[#8B7B68] italic">Saving...</span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-[#6B5D4D]">
-          {worksheet.template_type && (
-            <span>{templateLabels[worksheet.template_type] || worksheet.template_type}</span>
+      {/* Document wrapper */}
+      <div className="bg-white/[0.03] backdrop-blur-sm rounded-2xl border border-white/[0.06] px-10 py-8 md:px-14 md:py-10">
+        {/* Title block */}
+        <div className="mb-8 pb-6 border-b border-white/[0.08]">
+          <h1 className="text-2xl md:text-[28px] font-semibold text-[#E8DCC8] tracking-tight leading-tight">
+            {worksheet.title}
+          </h1>
+          {worksheet.description && (
+            <p className="text-[15px] text-[#A89878] mt-2 leading-[1.7]">{worksheet.description}</p>
           )}
-          {worksheet.pilot_nodes && <span>· {worksheet.pilot_nodes.name}</span>}
-          {worksheet.created_by && <span>· by {worksheet.created_by}</span>}
-          <span>· updated {new Date(worksheet.updated_at).toLocaleDateString()}</span>
+          <div className="flex items-center gap-4 mt-4 text-[13px] text-[#6B5D4D]">
+            {worksheet.created_by && <span>{worksheet.created_by}</span>}
+            {worksheet.pilot_nodes && <span>· {worksheet.pilot_nodes.name}</span>}
+            <span>· {new Date(worksheet.updated_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</span>
+            <div className="ml-auto flex items-center gap-2">
+              {saving && <span className="text-[11px] text-[#8B7B68] italic">Saving...</span>}
+              <select
+                value={worksheet.phase}
+                onChange={(e) => onPhaseCommit(e.target.value)}
+                className="px-2 py-1 rounded border border-white/[0.1] bg-[#1A1816] text-[12px] text-[#D4C4A8] focus:outline-none focus:border-[#C47A3A]/60 cursor-pointer"
+              >
+                <option value="draft">Draft</option>
+                <option value="working">Working</option>
+                <option value="processed">Processed</option>
+              </select>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Sections */}
-      <div className="space-y-4">
-        {(worksheet.sections || []).length === 0 ? (
-          <div className="text-[#6B5D4D] text-sm italic bg-white/[0.03] rounded-xl p-6 border border-white/[0.06]">
+        {/* Sections */}
+        {sections.length === 0 ? (
+          <div className="text-[#6B5D4D] text-[15px] italic py-8 text-center">
             This worksheet has no sections yet. Add sections via Supabase.
           </div>
         ) : (
-          (worksheet.sections || []).map((section) => (
+          sections.map((section) => (
             <SectionRenderer
               key={section.id}
               section={section}

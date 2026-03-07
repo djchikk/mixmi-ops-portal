@@ -613,16 +613,12 @@ export default function NodeProgressPage() {
           <FadeIn delay={500}>
             <footer className="text-center pt-8 pb-4 border-t border-white/[0.06]">
               <p className="text-sm text-[#8B7B68]">
-                Questions?{" "}
                 <a
-                  href="mailto:sandy@mixmi.me"
+                  href="mailto:hoover.sandy@gmail.com"
                   className="text-[#C47A3A] hover:text-[#E8B84D] transition-colors"
                 >
-                  sandy@mixmi.me
+                  Questions? Get in touch
                 </a>
-              </p>
-              <p className="text-xs text-[#6B5D4D] mt-2">
-                Built with care in Solvang, CA
               </p>
             </footer>
           </FadeIn>

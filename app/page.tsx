@@ -129,6 +129,7 @@ interface ChecklistItem {
   checked: boolean;
   notes: string;
   item_status?: "blank" | "confirmed" | "rejected" | "needs_discussion";
+  admin_only?: boolean;
 }
 
 interface ChecklistSection extends SectionCommon {
@@ -848,7 +849,7 @@ function ChecklistSectionRenderer({
         {items.map((item, i) => {
           const itemSt = checklistItemStatusConfig[item.item_status || "blank"] || checklistItemStatusConfig.blank;
           return (
-            <div key={i} className="flex items-start gap-3 py-2 group border-b border-white/[0.04] last:border-b-0">
+            <div key={i} className={`flex items-start gap-3 py-2 group border-b border-white/[0.04] last:border-b-0 ${item.admin_only ? "bg-white/[0.08] rounded-lg px-3 -mx-3" : ""}`}>
               <input
                 type="checkbox"
                 checked={item.checked}
@@ -872,6 +873,9 @@ function ChecklistSectionRenderer({
                         ) : item.label
                       ) : <span className="text-[#6B5D4D] italic">Untitled item</span>}
                     </span>
+                    {item.admin_only && (
+                      <span className="text-[11px] text-[#8B7B68] ml-2" title="Admin only — sensitive item">🔒</span>
+                    )}
                     {item.lead && (
                       <span className="text-[13px] text-[#8B7B68] ml-2">— {item.lead}</span>
                     )}
@@ -894,19 +898,33 @@ function ChecklistSectionRenderer({
                   className="text-[13px] text-[#8B7B68] mt-0.5 block"
                 />
               </div>
-              <select
-                value={item.item_status || "blank"}
-                onChange={(e) => commitItem(i, {
-                  item_status: e.target.value as ChecklistItem["item_status"],
-                  checked: e.target.value === "confirmed",
-                })}
-                className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[11px] px-1 py-0.5 rounded border border-white/[0.1] bg-[#1A1816] text-[#8B7B68] focus:outline-none cursor-pointer shrink-0"
-              >
-                <option value="blank">—</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="rejected">Rejected</option>
-                <option value="needs_discussion">Discuss</option>
-              </select>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <label
+                  className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 cursor-pointer"
+                  title="Mark as admin-only (sensitive)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.admin_only || false}
+                    onChange={(e) => commitItem(i, { admin_only: e.target.checked })}
+                    className="w-3 h-3 accent-[#8B7B68] cursor-pointer"
+                  />
+                  <span className="text-[10px] text-[#6B5D4D]">🔒</span>
+                </label>
+                <select
+                  value={item.item_status || "blank"}
+                  onChange={(e) => commitItem(i, {
+                    item_status: e.target.value as ChecklistItem["item_status"],
+                    checked: e.target.value === "confirmed",
+                  })}
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[11px] px-1 py-0.5 rounded border border-white/[0.1] bg-[#1A1816] text-[#8B7B68] focus:outline-none cursor-pointer shrink-0"
+                >
+                  <option value="blank">—</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="needs_discussion">Discuss</option>
+                </select>
+              </div>
             </div>
           );
         })}

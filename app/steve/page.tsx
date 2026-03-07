@@ -113,6 +113,59 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
   );
 }
 
+const nodeStageOrder = ["planning", "activating", "active", "scaling"];
+const nodeStagePercent: Record<string, number> = { planning: 15, activating: 40, active: 70, scaling: 95 };
+const nodeStageColors: Record<string, string> = {
+  planning: "#7A7A7A",
+  activating: "#E8B84D",
+  active: "#5DBF82",
+  scaling: "#9B7ED8",
+};
+
+function NodeProgressTimeline({
+  nodes,
+  highlightNodeId,
+}: {
+  nodes: { id: string; name: string; status: string }[];
+  highlightNodeId?: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between text-[10px] text-[#6B5D4D] uppercase tracking-widest font-semibold px-1">
+        {nodeStageOrder.map((s) => (
+          <span key={s}>{s}</span>
+        ))}
+      </div>
+      {nodes.map((node) => {
+        const pct = nodeStagePercent[node.status] || 5;
+        const color = nodeStageColors[node.status] || "#7A7A7A";
+        const isMuted = highlightNodeId != null && node.id !== highlightNodeId;
+        return (
+          <div key={node.id} className={`${isMuted ? "opacity-40" : ""}`}>
+            <div className="flex items-center gap-3">
+              <span className={`text-[13px] w-[120px] shrink-0 truncate ${isMuted ? "text-[#6B5D4D]" : "text-[#D4C4A8] font-medium"}`}>
+                {node.name}
+              </span>
+              <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${pct}%`,
+                    background: `linear-gradient(90deg, ${color}88, ${color})`,
+                  }}
+                />
+              </div>
+              <span className="text-[11px] w-[70px] text-right shrink-0" style={{ color }}>
+                {node.status}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FadeIn({ delay, children }: { delay: number; children: React.ReactNode }) {
   return (
     <div
@@ -357,8 +410,22 @@ export default function StevePage() {
             </section>
           </FadeIn>
 
+          {/* ── Node Progress Timeline ── */}
+          {nodes.length > 0 && (
+            <FadeIn delay={250}>
+              <section className="mb-16">
+                <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
+                  Node Progress
+                </h2>
+                <div className="bg-white/[0.03] rounded-xl p-5 border border-white/[0.06]">
+                  <NodeProgressTimeline nodes={nodes} />
+                </div>
+              </section>
+            </FadeIn>
+          )}
+
           {/* ── Pilot Nodes ── */}
-          <FadeIn delay={300}>
+          <FadeIn delay={350}>
             <section className="mb-16">
               <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
                 Pilot Communities

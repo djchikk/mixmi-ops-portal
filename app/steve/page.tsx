@@ -196,6 +196,7 @@ export default function StevePage() {
   const [content, setContent] = useState<Record<string, string>>({});
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [nodesExpanded, setNodesExpanded] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -435,36 +436,63 @@ export default function StevePage() {
           {/* ── Pilot Nodes ── */}
           <FadeIn delay={350}>
             <section className="mb-16">
-              <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
-                Pilot Communities
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className={`rounded-xl bg-white/[0.04] border border-white/[0.08] p-5 ${
-                      node.status === "activating" ? "pulse-activating" : ""
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h3 className="text-[17px] font-semibold text-[#E8DCC8]">{node.name}</h3>
-                      <StatusBadge status={node.status} />
-                    </div>
-                    {node.lead_name && (
-                      <div className="text-xs text-[#8B7B68] mb-2">
-                        Led by {node.lead_name}
+              <button
+                onClick={() => setNodesExpanded((v) => !v)}
+                className="flex items-center gap-2 mb-4 group bg-transparent border-none cursor-pointer p-0"
+              >
+                <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold">
+                  Pilot Communities
+                </h2>
+                <span className={`text-[#6B5D4D] text-xs transition-transform duration-200 ${nodesExpanded ? "rotate-90" : ""}`}>
+                  ▶
+                </span>
+              </button>
+
+              {!nodesExpanded ? (
+                <div
+                  onClick={() => setNodesExpanded(true)}
+                  className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-[#A89878] cursor-pointer hover:text-[#D4C4A8] transition-colors"
+                >
+                  {nodes.slice(0, 4).map((n, i) => (
+                    <span key={n.id} className="inline-flex items-center gap-1.5">
+                      {i > 0 && <span className="text-[#6B5D4D]">·</span>}
+                      <span>{n.name}</span>
+                      <StatusBadge status={n.status} />
+                    </span>
+                  ))}
+                  {nodes.length > 4 && (
+                    <span className="text-[#6B5D4D] ml-1">+ {nodes.length - 4} more</span>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {nodes.map((node) => (
+                    <div
+                      key={node.id}
+                      className={`rounded-xl bg-white/[0.04] border border-white/[0.08] p-5 ${
+                        node.status === "activating" ? "pulse-activating" : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="text-[17px] font-semibold text-[#E8DCC8]">{node.name}</h3>
+                        <StatusBadge status={node.status} />
                       </div>
-                    )}
-                    {node.what_it_tests && (
-                      <p className="text-[13px] text-[#A89878] leading-relaxed">
-                        {node.what_it_tests.length > 140
-                          ? node.what_it_tests.slice(0, 140) + "..."
-                          : node.what_it_tests}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
+                      {node.lead_name && (
+                        <div className="text-xs text-[#8B7B68] mb-2">
+                          Led by {node.lead_name}
+                        </div>
+                      )}
+                      {node.what_it_tests && (
+                        <p className="text-[13px] text-[#A89878] leading-relaxed">
+                          {node.what_it_tests.length > 140
+                            ? node.what_it_tests.slice(0, 140) + "..."
+                            : node.what_it_tests}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </FadeIn>
 

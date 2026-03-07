@@ -309,33 +309,165 @@ function WorksheetCard({
 }
 
 // ============================================================
+// Inline Edit Primitives
+// ============================================================
+
+function InlineText({
+  value,
+  placeholder,
+  onCommit,
+  className,
+}: {
+  value: string;
+  placeholder: string;
+  onCommit: (value: string) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onCommit(draft);
+  };
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => { setDraft(value); setEditing(true); }}
+        className={`px-2.5 py-1.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors min-h-[32px] ${className || ""}`}
+      >
+        {value || <span className="text-[#6B5D4D] italic">{placeholder}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+      placeholder={placeholder}
+      className={`px-2.5 py-1.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors ${className || ""}`}
+    />
+  );
+}
+
+function InlineNumber({
+  value,
+  placeholder,
+  onCommit,
+  className,
+}: {
+  value: number | null;
+  placeholder: string;
+  onCommit: (value: number | null) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value?.toString() ?? "");
+
+  const commit = () => {
+    setEditing(false);
+    const num = draft ? Number(draft) : null;
+    if (num !== value) onCommit(num);
+  };
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => { setDraft(value?.toString() ?? ""); setEditing(true); }}
+        className={`px-2.5 py-1.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors text-right min-h-[32px] ${className || ""}`}
+      >
+        {value != null ? `$${value.toLocaleString()}` : <span className="text-[#6B5D4D] italic">{placeholder}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      type="number"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+      placeholder={placeholder}
+      className={`px-2.5 py-1.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors text-right ${className || ""}`}
+    />
+  );
+}
+
+function InlineTextarea({
+  value,
+  placeholder,
+  onCommit,
+  rows,
+}: {
+  value: string;
+  placeholder: string;
+  onCommit: (value: string) => void;
+  rows?: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onCommit(draft);
+  };
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => { setDraft(value); setEditing(true); }}
+        className="w-full px-3 py-2.5 rounded-lg border border-transparent text-sm text-[#D4C4A8] cursor-pointer hover:border-white/[0.1] transition-colors min-h-[60px] whitespace-pre-wrap leading-relaxed"
+      >
+        {value || <span className="text-[#6B5D4D] italic">{placeholder}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <textarea
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Escape") setEditing(false); }}
+      placeholder={placeholder}
+      rows={rows || 4}
+      className="w-full px-3 py-2.5 rounded-lg border border-[#C47A3A] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none transition-colors resize-y"
+    />
+  );
+}
+
+// ============================================================
 // Section Editors
 // ============================================================
 
 function PromptSectionEditor({
   section,
-  onChange,
+  onCommit,
 }: {
   section: PromptSection;
-  onChange: (updated: PromptSection) => void;
+  onCommit: (updated: PromptSection) => void;
 }) {
   return (
     <div className="space-y-3">
       <div className="text-sm text-[#A89878] leading-relaxed bg-white/[0.03] rounded-lg p-3 border border-white/[0.06]">
         {section.prompt}
       </div>
-      <textarea
+      <InlineTextarea
         value={section.response}
-        onChange={(e) => {
-          const updated = { ...section, response: e.target.value };
-          if (updated.status === "blank" && e.target.value.trim()) {
-            updated.status = "in_progress";
-          }
-          onChange(updated);
+        placeholder="Click to add your response..."
+        onCommit={(val) => {
+          const updated = { ...section, response: val };
+          if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
+          onCommit(updated);
         }}
-        placeholder="Your response..."
-        rows={4}
-        className="w-full px-3 py-2.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A] transition-colors resize-y"
       />
     </div>
   );
@@ -343,80 +475,78 @@ function PromptSectionEditor({
 
 function TextSectionEditor({
   section,
-  onChange,
+  onCommit,
 }: {
   section: TextSection;
-  onChange: (updated: TextSection) => void;
+  onCommit: (updated: TextSection) => void;
 }) {
   return (
-    <textarea
+    <InlineTextarea
       value={section.content}
-      onChange={(e) => {
-        const updated = { ...section, content: e.target.value };
-        if (updated.status === "blank" && e.target.value.trim()) {
-          updated.status = "in_progress";
-        }
-        onChange(updated);
-      }}
-      placeholder="Write here..."
+      placeholder="Click to write..."
       rows={5}
-      className="w-full px-3 py-2.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A] transition-colors resize-y"
+      onCommit={(val) => {
+        const updated = { ...section, content: val };
+        if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
+        onCommit(updated);
+      }}
     />
   );
 }
 
 function BudgetSectionEditor({
   section,
-  onChange,
+  onCommit,
 }: {
   section: BudgetSection;
-  onChange: (updated: BudgetSection) => void;
+  onCommit: (updated: BudgetSection) => void;
 }) {
   const rows = section.rows || [];
-  const updateRow = (idx: number, field: keyof BudgetRow, value: string | number | null) => {
+
+  const commitRow = (idx: number, field: keyof BudgetRow, value: string | number | null) => {
     const newRows = [...rows];
     newRows[idx] = { ...newRows[idx], [field]: value };
     const updated = { ...section, rows: newRows };
     if (updated.status === "blank") updated.status = "in_progress";
-    onChange(updated);
+    onCommit(updated);
   };
+
   const addRow = () => {
-    onChange({
+    onCommit({
       ...section,
       rows: [...rows, { label: "", amount: null, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
+
   const removeRow = (idx: number) => {
     const newRows = rows.filter((_, i) => i !== idx);
-    onChange({ ...section, rows: newRows });
+    onCommit({ ...section, rows: newRows });
   };
+
   const total = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
 
   return (
     <div className="space-y-2">
       {rows.map((row, i) => (
         <div key={i} className="flex gap-2 items-center">
-          <input
+          <InlineText
             value={row.label}
-            onChange={(e) => updateRow(i, "label", e.target.value)}
             placeholder="Item"
-            className="flex-1 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]"
+            onCommit={(val) => commitRow(i, "label", val)}
+            className="flex-1"
           />
-          <input
-            type="number"
-            value={row.amount ?? ""}
-            onChange={(e) =>
-              updateRow(i, "amount", e.target.value ? Number(e.target.value) : null)
-            }
+          <InlineNumber
+            value={row.amount}
             placeholder="$0"
-            className="w-24 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A] text-right"
+            onCommit={(val) => commitRow(i, "amount", val)}
+            className="w-24"
           />
-          <input
+          <InlineText
             value={row.notes}
-            onChange={(e) => updateRow(i, "notes", e.target.value)}
             placeholder="Notes"
-            className="w-32 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]"
+            onCommit={(val) => commitRow(i, "notes", val)}
+            className="w-32"
           />
           <button
             onClick={() => removeRow(i)}
@@ -443,29 +573,32 @@ function BudgetSectionEditor({
 
 function ChecklistSectionEditor({
   section,
-  onChange,
+  onCommit,
 }: {
   section: ChecklistSection;
-  onChange: (updated: ChecklistSection) => void;
+  onCommit: (updated: ChecklistSection) => void;
 }) {
   const items = section.items || [];
-  const updateItem = (idx: number, field: keyof ChecklistItem, value: string | boolean) => {
+
+  const commitItem = (idx: number, field: keyof ChecklistItem, value: string | boolean) => {
     const newItems = [...items];
     newItems[idx] = { ...newItems[idx], [field]: value };
     const updated = { ...section, items: newItems };
     if (updated.status === "blank") updated.status = "in_progress";
-    onChange(updated);
+    onCommit(updated);
   };
+
   const addItem = () => {
-    onChange({
+    onCommit({
       ...section,
       items: [...items, { label: "", checked: false, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
+
   const removeItem = (idx: number) => {
     const newItems = items.filter((_, i) => i !== idx);
-    onChange({ ...section, items: newItems });
+    onCommit({ ...section, items: newItems });
   };
 
   return (
@@ -475,20 +608,20 @@ function ChecklistSectionEditor({
           <input
             type="checkbox"
             checked={item.checked}
-            onChange={(e) => updateItem(i, "checked", e.target.checked)}
+            onChange={(e) => commitItem(i, "checked", e.target.checked)}
             className="accent-[#5DBF82] w-4 h-4 cursor-pointer"
           />
-          <input
+          <InlineText
             value={item.label}
-            onChange={(e) => updateItem(i, "label", e.target.value)}
             placeholder="Item"
-            className="flex-1 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]"
+            onCommit={(val) => commitItem(i, "label", val)}
+            className="flex-1"
           />
-          <input
+          <InlineText
             value={item.notes}
-            onChange={(e) => updateItem(i, "notes", e.target.value)}
             placeholder="Notes"
-            className="w-32 px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] text-sm text-[#D4C4A8] placeholder-[#6B5D4D] focus:outline-none focus:border-[#C47A3A]"
+            onCommit={(val) => commitItem(i, "notes", val)}
+            className="w-32"
           />
           <button
             onClick={() => removeItem(i)}
@@ -510,10 +643,10 @@ function ChecklistSectionEditor({
 
 function SectionRenderer({
   section,
-  onChange,
+  onCommit,
 }: {
   section: WorksheetSection;
-  onChange: (updated: WorksheetSection) => void;
+  onCommit: (updated: WorksheetSection) => void;
 }) {
   const statusCfg = sectionStatusConfig[section.status] || sectionStatusConfig.blank;
   return (
@@ -530,16 +663,16 @@ function SectionRenderer({
         </span>
       </div>
       {section.type === "prompt" && (
-        <PromptSectionEditor section={section} onChange={onChange as (u: PromptSection) => void} />
+        <PromptSectionEditor section={section} onCommit={onCommit as (u: PromptSection) => void} />
       )}
       {section.type === "text" && (
-        <TextSectionEditor section={section} onChange={onChange as (u: TextSection) => void} />
+        <TextSectionEditor section={section} onCommit={onCommit as (u: TextSection) => void} />
       )}
       {section.type === "budget" && (
-        <BudgetSectionEditor section={section} onChange={onChange as (u: BudgetSection) => void} />
+        <BudgetSectionEditor section={section} onCommit={onCommit as (u: BudgetSection) => void} />
       )}
       {section.type === "checklist" && (
-        <ChecklistSectionEditor section={section} onChange={onChange as (u: ChecklistSection) => void} />
+        <ChecklistSectionEditor section={section} onCommit={onCommit as (u: ChecklistSection) => void} />
       )}
       {section.type === "media" && (
         <div className="text-sm text-[#6B5D4D] italic">Media sections coming soon</div>
@@ -554,19 +687,15 @@ function SectionRenderer({
 
 function WorksheetDetail({
   worksheet,
-  dirty,
   saving,
-  onSectionChange,
-  onPhaseChange,
-  onSave,
+  onSectionCommit,
+  onPhaseCommit,
   onBack,
 }: {
   worksheet: Worksheet;
-  dirty: boolean;
   saving: boolean;
-  onSectionChange: (sectionId: string, updated: WorksheetSection) => void;
-  onPhaseChange: (phase: string) => void;
-  onSave: () => void;
+  onSectionCommit: (sectionId: string, updated: WorksheetSection) => void;
+  onPhaseCommit: (phase: string) => void;
   onBack: () => void;
 }) {
   return (
@@ -592,24 +721,16 @@ function WorksheetDetail({
           <div className="flex items-center gap-3">
             <select
               value={worksheet.phase}
-              onChange={(e) => onPhaseChange(e.target.value)}
+              onChange={(e) => onPhaseCommit(e.target.value)}
               className="px-2.5 py-1.5 rounded-lg border border-white/[0.1] bg-[#1A1816] text-sm text-[#D4C4A8] focus:outline-none focus:border-[#C47A3A] cursor-pointer"
             >
               <option value="draft">Draft</option>
               <option value="working">Working</option>
               <option value="processed">Processed</option>
             </select>
-            <button
-              onClick={onSave}
-              disabled={!dirty || saving}
-              className={`px-4 py-1.5 rounded-lg border-none text-sm font-semibold cursor-pointer transition-all ${
-                dirty
-                  ? "bg-[#C47A3A] text-white hover:bg-[#D4884A]"
-                  : "bg-white/[0.06] text-[#6B5D4D] cursor-default"
-              } disabled:opacity-50`}
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
+            {saving && (
+              <span className="text-xs text-[#8B7B68] italic">Saving...</span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3 text-xs text-[#6B5D4D]">
@@ -633,7 +754,7 @@ function WorksheetDetail({
             <SectionRenderer
               key={section.id}
               section={section}
-              onChange={(updated) => onSectionChange(section.id, updated)}
+              onCommit={(updated) => onSectionCommit(section.id, updated)}
             />
           ))
         )}
@@ -1000,7 +1121,6 @@ export default function OpsPortal() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [selectedWorksheet, setSelectedWorksheet] = useState<Worksheet | null>(null);
   const [worksheetSaving, setWorksheetSaving] = useState(false);
-  const [worksheetDirty, setWorksheetDirty] = useState(false);
 
   const handleLogin = async (email: string, password: string) => {
     setLoginLoading(true);
@@ -1073,56 +1193,55 @@ export default function OpsPortal() {
   const selectWorksheet = useCallback((ws: Worksheet) => {
     setSelectedWorksheet(ws);
     setSelectedNode(null);
-    setWorksheetDirty(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  const handleSectionChange = useCallback(
+  const persistWorksheet = useCallback(
+    async (id: string, payload: { sections?: WorksheetSection[]; phase?: string }) => {
+      setWorksheetSaving(true);
+      try {
+        const { error } = await supabase
+          .from("worksheets")
+          .update(payload)
+          .eq("id", id);
+        if (error) throw error;
+        const now = new Date().toISOString();
+        setWorksheets((prev) =>
+          prev.map((ws) =>
+            ws.id === id ? { ...ws, ...payload, updated_at: now } : ws
+          )
+        );
+        setSelectedWorksheet((prev) =>
+          prev && prev.id === id ? { ...prev, ...payload, updated_at: now } : prev
+        );
+      } catch (e) {
+        console.error("Save worksheet error:", e);
+      }
+      setWorksheetSaving(false);
+    },
+    []
+  );
+
+  const handleSectionCommit = useCallback(
     (sectionId: string, updated: WorksheetSection) => {
       if (!selectedWorksheet) return;
       const newSections = (selectedWorksheet.sections || []).map((s) =>
         s.id === sectionId ? updated : s
       );
       setSelectedWorksheet({ ...selectedWorksheet, sections: newSections });
-      setWorksheetDirty(true);
+      persistWorksheet(selectedWorksheet.id, { sections: newSections });
     },
-    [selectedWorksheet]
+    [selectedWorksheet, persistWorksheet]
   );
 
-  const handlePhaseChange = useCallback(
+  const handlePhaseCommit = useCallback(
     (phase: string) => {
       if (!selectedWorksheet) return;
       setSelectedWorksheet({ ...selectedWorksheet, phase });
-      setWorksheetDirty(true);
+      persistWorksheet(selectedWorksheet.id, { phase });
     },
-    [selectedWorksheet]
+    [selectedWorksheet, persistWorksheet]
   );
-
-  const saveWorksheet = useCallback(async () => {
-    if (!selectedWorksheet) return;
-    setWorksheetSaving(true);
-    try {
-      const { error } = await supabase
-        .from("worksheets")
-        .update({
-          sections: selectedWorksheet.sections,
-          phase: selectedWorksheet.phase,
-        })
-        .eq("id", selectedWorksheet.id);
-      if (error) throw error;
-      setWorksheets((prev) =>
-        prev.map((ws) =>
-          ws.id === selectedWorksheet.id
-            ? { ...ws, sections: selectedWorksheet.sections, phase: selectedWorksheet.phase, updated_at: new Date().toISOString() }
-            : ws
-        )
-      );
-      setWorksheetDirty(false);
-    } catch (e) {
-      console.error("Save worksheet error:", e);
-    }
-    setWorksheetSaving(false);
-  }, [selectedWorksheet]);
 
   if (!token) {
     return (
@@ -1199,12 +1318,10 @@ export default function OpsPortal() {
         ) : selectedWorksheet ? (
           <WorksheetDetail
             worksheet={selectedWorksheet}
-            dirty={worksheetDirty}
             saving={worksheetSaving}
-            onSectionChange={handleSectionChange}
-            onPhaseChange={handlePhaseChange}
-            onSave={saveWorksheet}
-            onBack={() => { setSelectedWorksheet(null); setWorksheetDirty(false); }}
+            onSectionCommit={handleSectionCommit}
+            onPhaseCommit={handlePhaseCommit}
+            onBack={() => setSelectedWorksheet(null)}
           />
         ) : <>
         {/* OVERVIEW */}

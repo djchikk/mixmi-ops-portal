@@ -30,6 +30,15 @@ interface Milestone {
   updated_at?: string;
 }
 
+interface UpdateEntry {
+  date: string;
+  narrative: string;
+  image_url: string | null;
+  image_caption: string | null;
+  video_url: string | null;
+  video_caption: string | null;
+}
+
 interface NodePageContent {
   narrative: string;
   image_url: string | null;
@@ -37,6 +46,7 @@ interface NodePageContent {
   video_url: string | null;
   video_caption: string | null;
   updated_at: string;
+  updates?: UpdateEntry[];
 }
 
 // ============================================================
@@ -136,6 +146,14 @@ function NodeProgressTimeline({
   nodes: { id: string; name: string; status: string }[];
   highlightNodeId?: string;
 }) {
+  const statusPriority: Record<string, number> = { activating: 0, active: 1, scaling: 2, planning: 3 };
+  const sorted = [...nodes].sort((a, b) => {
+    const aIsKenya = a.name.toLowerCase().includes("kenya") ? 0 : 1;
+    const bIsKenya = b.name.toLowerCase().includes("kenya") ? 0 : 1;
+    if (aIsKenya !== bIsKenya) return aIsKenya - bIsKenya;
+    return (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9);
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex justify-between text-[10px] text-[#6B5D4D] uppercase tracking-widest font-semibold px-1">
@@ -143,7 +161,7 @@ function NodeProgressTimeline({
           <span key={s}>{s}</span>
         ))}
       </div>
-      {nodes.map((node) => {
+      {sorted.map((node) => {
         const pct = nodeStagePercent[node.status] || 5;
         const color = nodeStageColors[node.status] || "#7A7A7A";
         const isMuted = highlightNodeId != null && node.id !== highlightNodeId;
@@ -232,7 +250,7 @@ export default function NodeProgressPage() {
           .eq("pilot_node_id", nodeData.id),
         supabase
           .from("node_page_content")
-          .select("narrative, image_url, image_caption, video_url, video_caption, updated_at")
+          .select("narrative, image_url, image_caption, video_url, video_caption, updated_at, updates")
           .eq("pilot_node_id", nodeData.id)
           .single(),
         supabase
@@ -275,6 +293,7 @@ export default function NodeProgressPage() {
   const videoUrl = content?.video_url || "";
   const videoCaption = content?.video_caption || "";
   const hasMedia = imageUrl.trim() !== "" || videoUrl.trim() !== "";
+  const updates: UpdateEntry[] = content?.updates || [];
 
   const completedMilestones = milestones.filter((m) => m.status === "done").length;
   const upcomingMilestones = milestones
@@ -423,6 +442,72 @@ export default function NodeProgressPage() {
                     </div>
                   );
                 })()}
+              </section>
+            </FadeIn>
+          )}
+
+          {/* ── Update History ── */}
+          {updates.length > 0 && (
+            <FadeIn delay={175}>
+              <section className="mb-16">
+                <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
+                  Updates
+                </h2>
+                <div className="space-y-0">
+                  {updates.map((entry, i) => {
+                    const hasEntryMedia = entry.image_url || entry.video_url;
+                    return (
+                      <div key={i} className="border-l-2 border-[#8B7B68]/30 pl-5 pb-8 relative">
+                        <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-[#8B7B68]/60" />
+                        <p className="text-[11px] text-[#6B5D4D] uppercase tracking-wider font-semibold mb-2">
+                          {new Date(entry.date).toLocaleDateString("en-US", {
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </p>
+                        {entry.narrative && (
+                          <p className="text-sm text-[#A89878] leading-relaxed whitespace-pre-line mb-3">
+                            {entry.narrative}
+                          </p>
+                        )}
+                        {entry.image_url && (
+                          <div className="mb-3">
+                            <img
+                              src={entry.image_url}
+                              alt={entry.image_caption || "Previous update"}
+                              className="max-h-48 rounded-lg border border-white/[0.06] object-cover"
+                            />
+                            {entry.image_caption && (
+                              <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.image_caption}</p>
+                            )}
+                          </div>
+                        )}
+                        {entry.video_url && (() => {
+                          const { type, embedUrl } = parseVideoEmbed(entry.video_url);
+                          if (type === "unknown") {
+                            return (
+                              <div className="mb-3">
+                                <a href={entry.video_url} target="_blank" rel="noopener noreferrer" className="text-[#C47A3A] hover:text-[#E8B84D] transition-colors text-xs">
+                                  Watch video →
+                                </a>
+                                {entry.video_caption && <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.video_caption}</p>}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="mb-3">
+                              <div className="aspect-video rounded-lg overflow-hidden border border-white/[0.06] max-w-sm">
+                                <iframe src={embedUrl} title={entry.video_caption || "Video"} allowFullScreen className="w-full h-full" />
+                              </div>
+                              {entry.video_caption && <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.video_caption}</p>}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
             </FadeIn>
           )}

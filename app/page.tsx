@@ -295,6 +295,14 @@ function NodeProgressTimeline({
   nodes: { id: string; name: string; status: string }[];
   highlightNodeId?: string;
 }) {
+  const statusPriority: Record<string, number> = { activating: 0, active: 1, scaling: 2, planning: 3 };
+  const sorted = [...nodes].sort((a, b) => {
+    const aIsKenya = a.name.toLowerCase().includes("kenya") ? 0 : 1;
+    const bIsKenya = b.name.toLowerCase().includes("kenya") ? 0 : 1;
+    if (aIsKenya !== bIsKenya) return aIsKenya - bIsKenya;
+    return (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9);
+  });
+
   return (
     <div className="space-y-3">
       {/* Stage labels */}
@@ -303,7 +311,7 @@ function NodeProgressTimeline({
           <span key={s}>{s}</span>
         ))}
       </div>
-      {nodes.map((node) => {
+      {sorted.map((node) => {
         const pct = nodeStagePercent[node.status] || 5;
         const color = nodeStageColors[node.status] || "#7A7A7A";
         const isMuted = highlightNodeId != null && node.id !== highlightNodeId;
@@ -1663,6 +1671,7 @@ export default function OpsPortal() {
     image_caption: string | null;
     video_url: string | null;
     video_caption: string | null;
+    updates?: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[];
   }>>({});
   const [editingNodePage, setEditingNodePage] = useState<string>("steve");
   const [nodeImageUploading, setNodeImageUploading] = useState(false);
@@ -1709,7 +1718,7 @@ export default function OpsPortal() {
         supabase.from("engagement_logs").select("*, pilot_nodes(name)").order("created_at", { ascending: false }).limit(20),
         supabase.from("worksheets").select("*, pilot_nodes(name)").order("updated_at", { ascending: false }),
         supabase.from("site_content").select("key, value"),
-        supabase.from("node_page_content").select("pilot_node_id, narrative, image_url, image_caption, video_url, video_caption"),
+        supabase.from("node_page_content").select("pilot_node_id, narrative, image_url, image_caption, video_url, video_caption, updates"),
       ]);
       if (nodesRes.data) setNodes(nodesRes.data);
       if (msRes.data) setMilestones(msRes.data);
@@ -1724,7 +1733,7 @@ export default function OpsPortal() {
       }
       if (npcRes.data) {
         const map: Record<string, typeof nodePageContent[string]> = {};
-        npcRes.data.forEach((row: { pilot_node_id: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }) => {
+        npcRes.data.forEach((row: { pilot_node_id: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null; updates?: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[] }) => {
           map[row.pilot_node_id] = row;
         });
         setNodePageContent(map);
@@ -1744,6 +1753,43 @@ export default function OpsPortal() {
       if (session) setToken(session.access_token);
     });
   }, []);
+
+  // Archive-on-save helper for node page content
+  const saveNodePageField = async (
+    nodeId: string,
+    field: string,
+    value: string | null,
+  ) => {
+    const current = nodePageContent[nodeId];
+    const isContentField = ["narrative", "image_url", "video_url"].includes(field);
+    const hasContent = current && (current.narrative || current.image_url || current.video_url);
+
+    let updates = current?.updates || [];
+
+    if (isContentField && hasContent) {
+      const snapshot = {
+        date: new Date().toISOString(),
+        narrative: current.narrative || "",
+        image_url: current.image_url || null,
+        image_caption: current.image_caption || null,
+        video_url: current.video_url || null,
+        video_caption: current.video_caption || null,
+      };
+      updates = [snapshot, ...updates];
+    }
+
+    setNodePageContent(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], pilot_node_id: nodeId, [field]: value, updates },
+    }));
+
+    await supabase.from("node_page_content").upsert({
+      pilot_node_id: nodeId,
+      [field]: value,
+      updates,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "pilot_node_id" });
+  };
 
   // Redirect node leaders away from admin-only tabs
   useEffect(() => {
@@ -2280,17 +2326,7 @@ export default function OpsPortal() {
                       value={npc?.narrative || ""}
                       placeholder={`Write a personal message for the ${editingNode.name} node leader...`}
                       rows={4}
-                      onCommit={async (val) => {
-                        setNodePageContent((prev) => ({
-                          ...prev,
-                          [editingNode.id]: { ...prev[editingNode.id], pilot_node_id: editingNode.id, narrative: val },
-                        }));
-                        await supabase.from("node_page_content").upsert({
-                          pilot_node_id: editingNode.id,
-                          narrative: val,
-                          updated_at: new Date().toISOString(),
-                        }, { onConflict: "pilot_node_id" });
-                      }}
+                      onCommit={(val) => saveNodePageField(editingNode.id, "narrative", val)}
                     />
                   </div>
 
@@ -2306,13 +2342,7 @@ export default function OpsPortal() {
                           className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
                         />
                         <button
-                          onClick={async () => {
-                            setNodePageContent((prev) => ({
-                              ...prev,
-                              [editingNode.id]: { ...prev[editingNode.id], image_url: null },
-                            }));
-                            await supabase.from("node_page_content").update({ image_url: null, updated_at: new Date().toISOString() }).eq("pilot_node_id", editingNode.id);
-                          }}
+                          onClick={() => saveNodePageField(editingNode.id, "image_url", null)}
                           className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
                         >
                           Remove image
@@ -2338,15 +2368,7 @@ export default function OpsPortal() {
                               }
                               const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
                               const publicUrl = urlData.publicUrl;
-                              setNodePageContent((prev) => ({
-                                ...prev,
-                                [editingNode.id]: { ...prev[editingNode.id], pilot_node_id: editingNode.id, image_url: publicUrl },
-                              }));
-                              await supabase.from("node_page_content").upsert({
-                                pilot_node_id: editingNode.id,
-                                image_url: publicUrl,
-                                updated_at: new Date().toISOString(),
-                              }, { onConflict: "pilot_node_id" });
+                              await saveNodePageField(editingNode.id, "image_url", publicUrl);
                             } catch (err) {
                               alert(`Upload error: ${err}`);
                             }
@@ -2363,17 +2385,7 @@ export default function OpsPortal() {
                       <InlineField
                         value={npc?.image_caption || ""}
                         placeholder="Image caption (optional)"
-                        onCommit={async (val) => {
-                          setNodePageContent((prev) => ({
-                            ...prev,
-                            [editingNode.id]: { ...prev[editingNode.id], image_caption: val },
-                          }));
-                          await supabase.from("node_page_content").upsert({
-                            pilot_node_id: editingNode.id,
-                            image_caption: val,
-                            updated_at: new Date().toISOString(),
-                          }, { onConflict: "pilot_node_id" });
-                        }}
+                        onCommit={(val) => saveNodePageField(editingNode.id, "image_caption", val)}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2386,17 +2398,7 @@ export default function OpsPortal() {
                     <InlineField
                       value={npc?.video_url || ""}
                       placeholder="Paste YouTube or Vimeo URL..."
-                      onCommit={async (val) => {
-                        setNodePageContent((prev) => ({
-                          ...prev,
-                          [editingNode.id]: { ...prev[editingNode.id], video_url: val },
-                        }));
-                        await supabase.from("node_page_content").upsert({
-                          pilot_node_id: editingNode.id,
-                          video_url: val,
-                          updated_at: new Date().toISOString(),
-                        }, { onConflict: "pilot_node_id" });
-                      }}
+                      onCommit={(val) => saveNodePageField(editingNode.id, "video_url", val)}
                       className="text-sm text-[#D4C4A8]"
                     />
                     {npc?.video_url && (() => {
@@ -2419,17 +2421,7 @@ export default function OpsPortal() {
                       <InlineField
                         value={npc?.video_caption || ""}
                         placeholder="Video caption (optional)"
-                        onCommit={async (val) => {
-                          setNodePageContent((prev) => ({
-                            ...prev,
-                            [editingNode.id]: { ...prev[editingNode.id], video_caption: val },
-                          }));
-                          await supabase.from("node_page_content").upsert({
-                            pilot_node_id: editingNode.id,
-                            video_caption: val,
-                            updated_at: new Date().toISOString(),
-                          }, { onConflict: "pilot_node_id" });
-                        }}
+                        onCommit={(val) => saveNodePageField(editingNode.id, "video_caption", val)}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>

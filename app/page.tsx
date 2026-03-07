@@ -67,34 +67,34 @@ interface EngagementLog {
 
 type SectionStatus = "blank" | "in_progress" | "decided";
 
-interface NarrativeSection {
+// Common fields that can appear on any section type
+interface SectionCommon {
   id: string;
   title: string;
-  type: "narrative";
   status: SectionStatus;
-  body: string;
   subtitle?: string;
+  context?: string;
+  preamble?: string;
+  footer?: string;
+  decisions_prompt?: string;
 }
 
-interface PromptSection {
-  id: string;
-  title: string;
+interface NarrativeSection extends SectionCommon {
+  type: "narrative";
+  body: string;
+  style?: "callout" | "default";
+}
+
+interface PromptSection extends SectionCommon {
   type: "prompt";
-  status: SectionStatus;
-  context?: string;
   prompt: string;
   response: string;
   notes?: string;
-  subtitle?: string;
 }
 
-interface TextSection {
-  id: string;
-  title: string;
+interface TextSection extends SectionCommon {
   type: "text";
-  status: SectionStatus;
   content: string;
-  subtitle?: string;
 }
 
 interface BudgetRow {
@@ -105,31 +105,23 @@ interface BudgetRow {
   notes: string;
 }
 
-interface BudgetSection {
-  id: string;
-  title: string;
+interface BudgetSection extends SectionCommon {
   type: "budget";
-  status: SectionStatus;
-  context?: string;
   rows: BudgetRow[];
-  subtitle?: string;
 }
 
 interface ChecklistItem {
   label: string;
+  detail?: string;
+  lead?: string;
   checked: boolean;
   notes: string;
   item_status?: "blank" | "confirmed" | "rejected" | "needs_discussion";
 }
 
-interface ChecklistSection {
-  id: string;
-  title: string;
+interface ChecklistSection extends SectionCommon {
   type: "checklist";
-  status: SectionStatus;
-  context?: string;
   items: ChecklistItem[];
-  subtitle?: string;
 }
 
 interface MatrixCell {
@@ -137,15 +129,10 @@ interface MatrixCell {
   cell_status?: "not_started" | "in_progress" | "done" | "blocked";
 }
 
-interface MatrixSection {
-  id: string;
-  title: string;
+interface MatrixSection extends SectionCommon {
   type: "matrix";
-  status: SectionStatus;
-  context?: string;
   columns: string[];
   rows: { label: string; cells: MatrixCell[] }[];
-  subtitle?: string;
 }
 
 interface RoleCard {
@@ -154,14 +141,9 @@ interface RoleCard {
   responsibilities: string;
 }
 
-interface RolesSection {
-  id: string;
-  title: string;
+interface RolesSection extends SectionCommon {
   type: "roles";
-  status: SectionStatus;
-  context?: string;
   roles: RoleCard[];
-  subtitle?: string;
 }
 
 interface MediaSection {
@@ -550,11 +532,53 @@ function NarrativeBody({ text }: { text: string }) {
   );
 }
 
+function SectionPreamble({ section }: { section: SectionCommon }) {
+  return (
+    <>
+      {section.preamble && (
+        <div className="mb-4"><NarrativeBody text={section.preamble} /></div>
+      )}
+      {section.context && (
+        <div className="mb-4"><NarrativeBody text={section.context} /></div>
+      )}
+    </>
+  );
+}
+
+function SectionFooter({ section }: { section: SectionCommon }) {
+  return (
+    <>
+      {section.decisions_prompt && (
+        <div className="mt-5 bg-white/[0.03] border border-white/[0.08] rounded-lg px-4 py-3">
+          <div className="text-[11px] text-[#C47A3A] uppercase tracking-wider font-semibold mb-1.5">Decisions for this block</div>
+          <div className="text-[14px] text-[#D4C4A8] leading-[1.7] italic">{section.decisions_prompt}</div>
+        </div>
+      )}
+      {section.footer && (
+        <div className="mt-4"><NarrativeBody text={section.footer} /></div>
+      )}
+    </>
+  );
+}
+
 function NarrativeSectionRenderer({ section }: { section: NarrativeSection }) {
+  if (section.style === "callout") {
+    return (
+      <div>
+        <div className="bg-white/[0.03] border border-white/[0.08] rounded-lg px-5 py-4">
+          <div className="text-[14px] font-semibold text-[#D4C4A8] mb-1.5">{section.title}</div>
+          <div className="text-[14px] text-[#A89878] leading-[1.8] italic">{section.body}</div>
+        </div>
+        <SectionFooter section={section} />
+      </div>
+    );
+  }
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} />
+      <SectionPreamble section={section} />
       <NarrativeBody text={section.body} />
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -569,9 +593,7 @@ function PromptSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
-      {section.context && (
-        <div className="mb-4"><NarrativeBody text={section.context} /></div>
-      )}
+      <SectionPreamble section={section} />
       <div className="text-[15px] text-[#D4C4A8] leading-[1.7] mb-3 font-medium italic">
         {section.prompt}
       </div>
@@ -597,6 +619,7 @@ function PromptSectionRenderer({
           />
         </div>
       )}
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -611,6 +634,7 @@ function TextSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
+      <SectionPreamble section={section} />
       <InlineTextarea
         value={section.content}
         placeholder="Click to write..."
@@ -621,6 +645,7 @@ function TextSectionRenderer({
           onCommit(updated);
         }}
       />
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -665,9 +690,7 @@ function BudgetSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
-      {section.context && (
-        <div className="mb-4"><NarrativeBody text={section.context} /></div>
-      )}
+      <SectionPreamble section={section} />
       <div className="rounded-lg border border-white/[0.08] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -731,6 +754,7 @@ function BudgetSectionRenderer({
           + Add row
         </button>
       </div>
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -763,14 +787,12 @@ function ChecklistSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
-      {section.context && (
-        <div className="mb-4"><NarrativeBody text={section.context} /></div>
-      )}
-      <div className="space-y-1.5">
+      <SectionPreamble section={section} />
+      <div className="space-y-1">
         {items.map((item, i) => {
           const itemSt = checklistItemStatusConfig[item.item_status || "blank"] || checklistItemStatusConfig.blank;
           return (
-            <div key={i} className="flex items-start gap-3 py-1.5 group">
+            <div key={i} className="flex items-start gap-3 py-2 group border-b border-white/[0.04] last:border-b-0">
               <input
                 type="checkbox"
                 checked={item.checked}
@@ -781,32 +803,40 @@ function ChecklistSectionRenderer({
                 className="accent-[#5DBF82] w-4 h-4 cursor-pointer mt-1 shrink-0"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[15px] leading-[1.7] ${item.checked ? "text-[#8B7B68] line-through" : "text-[#D4C4A8]"}`}>
-                    {item.label ? (
-                      item.label.includes(" — ") ? (
-                        <>
-                          <strong className="font-semibold text-[#E8DCC8]">{item.label.split(" — ")[0]}</strong>
-                          {" — "}
-                          <span className="text-[#A89878]">{item.label.split(" — ").slice(1).join(" — ")}</span>
-                        </>
-                      ) : item.label
-                    ) : <span className="text-[#6B5D4D] italic">Untitled item</span>}
-                  </span>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    <span className={`text-[15px] leading-[1.7] ${item.checked ? "text-[#8B7B68] line-through" : "text-[#D4C4A8]"}`}>
+                      {item.label ? (
+                        item.label.includes(" — ") ? (
+                          <>
+                            <strong className="font-semibold text-[#E8DCC8]">{item.label.split(" — ")[0]}</strong>
+                            {" — "}
+                            <span className="text-[#A89878]">{item.label.split(" — ").slice(1).join(" — ")}</span>
+                          </>
+                        ) : item.label
+                      ) : <span className="text-[#6B5D4D] italic">Untitled item</span>}
+                    </span>
+                    {item.lead && (
+                      <span className="text-[13px] text-[#8B7B68] ml-2">— {item.lead}</span>
+                    )}
+                  </div>
                   {itemSt.label && (
-                    <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded" style={{ color: itemSt.color, background: `${itemSt.color}15` }}>
+                    <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded shrink-0 mt-0.5" style={{ color: itemSt.color, background: `${itemSt.color}15` }}>
                       {itemSt.icon} {itemSt.label}
                     </span>
                   )}
                 </div>
-                {(item.notes || true) && (
-                  <InlineField
-                    value={item.notes}
-                    placeholder="Add notes..."
-                    onCommit={(val) => commitItem(i, { notes: val })}
-                    className="text-[13px] text-[#8B7B68] mt-0.5 block"
-                  />
+                {item.detail && (
+                  <div className="text-[13px] text-[#A89878] leading-[1.7] mt-1 pl-0.5">
+                    {item.detail}
+                  </div>
                 )}
+                <InlineField
+                  value={item.notes}
+                  placeholder="Add notes..."
+                  onCommit={(val) => commitItem(i, { notes: val })}
+                  className="text-[13px] text-[#8B7B68] mt-0.5 block"
+                />
               </div>
               <select
                 value={item.item_status || "blank"}
@@ -831,6 +861,7 @@ function ChecklistSectionRenderer({
       >
         + Add item
       </button>
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -865,9 +896,7 @@ function MatrixSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
-      {section.context && (
-        <div className="mb-4"><NarrativeBody text={section.context} /></div>
-      )}
+      <SectionPreamble section={section} />
       <div className="rounded-lg border border-white/[0.08] overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -924,6 +953,7 @@ function MatrixSectionRenderer({
           </tbody>
         </table>
       </div>
+      <SectionFooter section={section} />
     </div>
   );
 }
@@ -948,9 +978,7 @@ function RolesSectionRenderer({
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
-      {section.context && (
-        <div className="mb-4"><NarrativeBody text={section.context} /></div>
-      )}
+      <SectionPreamble section={section} />
       <div className="rounded-lg border border-white/[0.08] overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -977,6 +1005,7 @@ function RolesSectionRenderer({
           </tbody>
         </table>
       </div>
+      <SectionFooter section={section} />
     </div>
   );
 }

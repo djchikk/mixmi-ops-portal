@@ -85,11 +85,18 @@ interface NarrativeSection extends SectionCommon {
   style?: "callout" | "default";
 }
 
+interface PromptEntry {
+  label: string;
+  description?: string;
+  response: string;
+}
+
 interface PromptSection extends SectionCommon {
   type: "prompt";
-  prompt: string;
-  response: string;
+  prompt?: string;
+  response?: string;
   notes?: string;
+  prompts?: PromptEntry[];
 }
 
 interface TextSection extends SectionCommon {
@@ -101,13 +108,15 @@ interface BudgetRow {
   label: string;
   low?: number | null;
   high?: number | null;
-  amount: number | null;
+  amount?: number | null;
+  actual?: number | null;
   notes: string;
 }
 
 interface BudgetSection extends SectionCommon {
   type: "budget";
   rows: BudgetRow[];
+  items?: BudgetRow[];
 }
 
 interface ChecklistItem {
@@ -129,10 +138,20 @@ interface MatrixCell {
   cell_status?: "not_started" | "in_progress" | "done" | "blocked";
 }
 
+interface MatrixRowFlat {
+  area?: string;
+  label?: string;
+  phase_a?: string;
+  phase_b?: string;
+  status?: string;
+  cells?: MatrixCell[];
+  [key: string]: unknown;
+}
+
 interface MatrixSection extends SectionCommon {
   type: "matrix";
   columns: string[];
-  rows: { label: string; cells: MatrixCell[] }[];
+  rows: MatrixRowFlat[];
 }
 
 interface RoleCard {
@@ -590,22 +609,55 @@ function PromptSectionRenderer({
   section: PromptSection;
   onCommit: (updated: PromptSection) => void;
 }) {
+  const prompts = section.prompts || [];
+  const hasMultiplePrompts = prompts.length > 0;
+
+  const commitPromptEntry = (idx: number, field: keyof PromptEntry, value: string) => {
+    const newPrompts = [...prompts];
+    newPrompts[idx] = { ...newPrompts[idx], [field]: value };
+    const updated = { ...section, prompts: newPrompts };
+    if (updated.status === "blank" && value.trim()) updated.status = "in_progress";
+    onCommit(updated);
+  };
+
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
       <SectionPreamble section={section} />
-      <div className="text-[15px] text-[#D4C4A8] leading-[1.7] mb-3 font-medium italic">
-        {section.prompt}
-      </div>
-      <InlineTextarea
-        value={section.response}
-        placeholder="Click to add your response..."
-        onCommit={(val) => {
-          const updated = { ...section, response: val };
-          if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
-          onCommit(updated);
-        }}
-      />
+      {hasMultiplePrompts ? (
+        <div className="space-y-6">
+          {prompts.map((entry, i) => (
+            <div key={i} className="border-l-2 border-white/[0.08] pl-4">
+              <div className="text-[15px] text-[#E8DCC8] font-semibold mb-1">{entry.label}</div>
+              {entry.description && (
+                <div className="text-[13px] text-[#8B7B68] leading-[1.7] mb-2">{entry.description}</div>
+              )}
+              <InlineTextarea
+                value={entry.response}
+                placeholder="Click to add your response..."
+                onCommit={(val) => commitPromptEntry(i, "response", val)}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {section.prompt && (
+            <div className="text-[15px] text-[#D4C4A8] leading-[1.7] mb-3 font-medium italic">
+              {section.prompt}
+            </div>
+          )}
+          <InlineTextarea
+            value={section.response || ""}
+            placeholder="Click to add your response..."
+            onCommit={(val) => {
+              const updated = { ...section, response: val };
+              if (updated.status === "blank" && val.trim()) updated.status = "in_progress";
+              onCommit(updated);
+            }}
+          />
+        </>
+      )}
       {section.notes !== undefined && (
         <div className="mt-3">
           <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-1">Notes / Follow-up</div>
@@ -664,10 +716,11 @@ function BudgetSectionRenderer({
   section: BudgetSection;
   onCommit: (updated: BudgetSection) => void;
 }) {
-  const rows = section.rows || [];
+  const rows = section.rows || section.items || [];
   const hasRanges = rows.some((r) => r.low != null || r.high != null);
+  const getActual = (r: BudgetRow) => r.actual ?? r.amount ?? null;
 
-  const commitRow = (idx: number, field: keyof BudgetRow, value: string | number | null) => {
+  const commitRow = (idx: number, field: string, value: string | number | null) => {
     const newRows = [...rows];
     newRows[idx] = { ...newRows[idx], [field]: value };
     const updated = { ...section, rows: newRows };
@@ -678,12 +731,12 @@ function BudgetSectionRenderer({
   const addRow = () => {
     onCommit({
       ...section,
-      rows: [...rows, { label: "", low: null, high: null, amount: null, notes: "" }],
+      rows: [...rows, { label: "", low: null, high: null, actual: null, amount: null, notes: "" }],
       status: section.status === "blank" ? "in_progress" : section.status,
     });
   };
 
-  const totalActual = rows.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalActual = rows.reduce((sum, r) => sum + (getActual(r) || 0), 0);
   const totalLow = rows.reduce((sum, r) => sum + (r.low || 0), 0);
   const totalHigh = rows.reduce((sum, r) => sum + (r.high || 0), 0);
 
@@ -723,7 +776,7 @@ function BudgetSectionRenderer({
                   </>
                 )}
                 <td className="px-3 py-1.5">
-                  <InlineNumber value={row.amount} placeholder="—" prefix="$" onCommit={(val) => commitRow(i, "amount", val)} className="w-full text-sm text-[#D4C4A8] font-medium" />
+                  <InlineNumber value={getActual(row)} placeholder="—" prefix="$" onCommit={(val) => commitRow(i, row.actual !== undefined ? "actual" : "amount", val)} className="w-full text-sm text-[#D4C4A8] font-medium" />
                 </td>
                 <td className="px-3 py-1.5">
                   <InlineField value={row.notes} placeholder="—" onCommit={(val) => commitRow(i, "notes", val)} className="text-sm text-[#8B7B68]" />
@@ -883,15 +936,28 @@ function MatrixSectionRenderer({
   const matrixRows = section.rows || [];
   const columns = section.columns || [];
 
-  const commitCell = (rowIdx: number, colIdx: number, updates: Partial<MatrixCell>) => {
+  // Map column headers to flat row field keys
+  const colFieldMap: Record<string, string> = {};
+  columns.forEach((col) => {
+    const lower = col.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    colFieldMap[col] = lower;
+  });
+
+  const commitRow = (rowIdx: number, field: string, value: string) => {
     const newRows = [...matrixRows];
-    const cells = [...(newRows[rowIdx].cells || [])];
-    cells[colIdx] = { ...(cells[colIdx] || { value: "" }), ...updates };
-    newRows[rowIdx] = { ...newRows[rowIdx], cells };
+    newRows[rowIdx] = { ...newRows[rowIdx], [field]: value };
     const updated = { ...section, rows: newRows };
     if (updated.status === "blank") updated.status = "in_progress";
     onCommit(updated);
   };
+
+  // Detect if rows use flat fields (area/phase_a/phase_b/status) or cells[] array
+  const usesFlat = matrixRows.length > 0 && (matrixRows[0].area != null || matrixRows[0].phase_a != null);
+
+  // For flat rows, figure out the data field keys (excluding area/label/status)
+  const dataFieldKeys = usesFlat
+    ? columns.filter((col) => col.toLowerCase() !== "status now").map((col) => colFieldMap[col] || col)
+    : [];
 
   return (
     <div>
@@ -905,51 +971,70 @@ function MatrixSectionRenderer({
               {columns.map((col, ci) => (
                 <th key={ci} className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[180px]">{col}</th>
               ))}
-              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold w-24">Status</th>
             </tr>
           </thead>
           <tbody>
-            {matrixRows.map((row, ri) => (
-              <tr key={ri} className={`border-b border-white/[0.04] ${ri % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
-                <td className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">{row.label}</td>
-                {columns.map((_, ci) => {
-                  const cell = row.cells?.[ci] || { value: "", cell_status: "not_started" };
-                  return (
-                    <td key={ci} className="px-3 py-2 align-top">
-                      <InlineField
-                        value={cell.value}
-                        placeholder="—"
-                        onCommit={(val) => commitCell(ri, ci, { value: val })}
-                        className="text-[13px] text-[#A89878] leading-relaxed"
-                      />
-                    </td>
-                  );
-                })}
-                <td className="px-3 py-2 align-top">
-                  {(() => {
-                    const lastCell = row.cells?.[columns.length - 1] || row.cells?.[0];
-                    const st = lastCell?.cell_status || "not_started";
-                    const cfg = matrixCellColors[st] || matrixCellColors.not_started;
-                    return (
-                      <select
-                        value={st}
-                        onChange={(e) => {
-                          const colIdx = columns.length - 1;
-                          commitCell(ri, Math.max(colIdx, 0), { cell_status: e.target.value as MatrixCell["cell_status"] });
-                        }}
-                        className="text-[11px] px-1.5 py-1 rounded border border-white/[0.08] bg-[#1A1816] focus:outline-none cursor-pointer"
-                        style={{ color: cfg.color }}
-                      >
-                        <option value="not_started">Not Started</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="done">Done</option>
-                        <option value="blocked">Blocked</option>
-                      </select>
-                    );
-                  })()}
-                </td>
-              </tr>
-            ))}
+            {matrixRows.map((row, ri) => {
+              const areaLabel = row.area || row.label || "";
+              const status = row.status || "not_started";
+              const statusCfg = matrixCellColors[status] || matrixCellColors.not_started;
+
+              return (
+                <tr key={ri} className={`border-b border-white/[0.04] ${ri % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
+                  <td className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">{areaLabel}</td>
+                  {usesFlat ? (
+                    <>
+                      {dataFieldKeys.map((fieldKey, ci) => {
+                        const cellValue = (row as Record<string, unknown>)[fieldKey] as string || "";
+                        return (
+                          <td key={ci} className="px-3 py-2 align-top">
+                            <div className="text-[13px] text-[#A89878] leading-relaxed whitespace-pre-wrap">{cellValue || "—"}</div>
+                          </td>
+                        );
+                      })}
+                      {/* Status column (last column = "Status Now") */}
+                      <td className="px-3 py-2 align-top">
+                        <select
+                          value={status}
+                          onChange={(e) => commitRow(ri, "status", e.target.value)}
+                          className="text-[11px] px-1.5 py-1 rounded border border-white/[0.08] bg-[#1A1816] focus:outline-none cursor-pointer"
+                          style={{ color: statusCfg.color }}
+                        >
+                          <option value="not_started">Not Started</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="done">Done</option>
+                          <option value="blocked">Blocked</option>
+                        </select>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      {columns.map((_, ci) => {
+                        const cell = row.cells?.[ci] || { value: "", cell_status: "not_started" };
+                        return (
+                          <td key={ci} className="px-3 py-2 align-top">
+                            <InlineField
+                              value={cell.value}
+                              placeholder="—"
+                              onCommit={(val) => {
+                                const newRows = [...matrixRows];
+                                const cells = [...(newRows[ri].cells || [])];
+                                cells[ci] = { ...(cells[ci] || { value: "" }), value: val };
+                                newRows[ri] = { ...newRows[ri], cells };
+                                const updated = { ...section, rows: newRows };
+                                if (updated.status === "blank") updated.status = "in_progress";
+                                onCommit(updated);
+                              }}
+                              className="text-[13px] text-[#A89878] leading-relaxed"
+                            />
+                          </td>
+                        );
+                      })}
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -957,12 +957,9 @@ function MatrixSectionRenderer({
   const matrixRows = section.rows || [];
   const columns = section.columns || [];
 
-  // Map column headers to flat row field keys
-  const colFieldMap: Record<string, string> = {};
-  columns.forEach((col) => {
-    const lower = col.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    colFieldMap[col] = lower;
-  });
+  // Positional mapping: columns[0] = area/label, columns[1..n] = data fields
+  // Flat row field keys in order matching the columns array
+  const flatFieldKeys = ["area", "phase_a", "phase_b", "status"];
 
   const commitRow = (rowIdx: number, field: string, value: string) => {
     const newRows = [...matrixRows];
@@ -975,11 +972,6 @@ function MatrixSectionRenderer({
   // Detect if rows use flat fields (area/phase_a/phase_b/status) or cells[] array
   const usesFlat = matrixRows.length > 0 && (matrixRows[0].area != null || matrixRows[0].phase_a != null);
 
-  // For flat rows, figure out the data field keys (excluding area/label/status)
-  const dataFieldKeys = usesFlat
-    ? columns.filter((col) => col.toLowerCase() !== "status now").map((col) => colFieldMap[col] || col)
-    : [];
-
   return (
     <div>
       <DocSectionHeader title={section.title} subtitle={section.subtitle} status={section.status} />
@@ -988,48 +980,62 @@ function MatrixSectionRenderer({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/[0.08]">
-              <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[140px]">Area</th>
+              {!usesFlat && (
+                <th className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[140px]">Area</th>
+              )}
               {columns.map((col, ci) => (
-                <th key={ci} className="text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold min-w-[180px]">{col}</th>
+                <th key={ci} className={`text-left px-3 py-2.5 text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold ${usesFlat && ci === 0 ? "min-w-[140px]" : "min-w-[180px]"}`}>{col}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {matrixRows.map((row, ri) => {
-              const areaLabel = row.area || row.label || "";
-              const status = row.status || "not_started";
-              const statusCfg = matrixCellColors[status] || matrixCellColors.not_started;
-
               return (
                 <tr key={ri} className={`border-b border-white/[0.04] ${ri % 2 === 1 ? "bg-white/[0.02]" : ""}`}>
-                  <td className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">{areaLabel}</td>
                   {usesFlat ? (
                     <>
-                      {dataFieldKeys.map((fieldKey, ci) => {
+                      {columns.map((_, ci) => {
+                        const fieldKey = flatFieldKeys[ci] || "";
                         const cellValue = (row as Record<string, unknown>)[fieldKey] as string || "";
+                        // First column (area/label) renders bold
+                        if (ci === 0) {
+                          return (
+                            <td key={ci} className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">
+                              {row.area || row.label || ""}
+                            </td>
+                          );
+                        }
+                        // Status column — render as editable dropdown
+                        if (fieldKey === "status") {
+                          const statusVal = cellValue || "not_started";
+                          const statusCfg = matrixCellColors[statusVal] || matrixCellColors.not_started;
+                          return (
+                            <td key={ci} className="px-3 py-2 align-top">
+                              <select
+                                value={statusVal}
+                                onChange={(e) => commitRow(ri, "status", e.target.value)}
+                                className="text-[11px] px-1.5 py-1 rounded border border-white/[0.08] bg-[#1A1816] focus:outline-none cursor-pointer"
+                                style={{ color: statusCfg.color }}
+                              >
+                                <option value="not_started">Not Started</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="done">Done</option>
+                                <option value="blocked">Blocked</option>
+                              </select>
+                            </td>
+                          );
+                        }
+                        // Data columns — render content
                         return (
                           <td key={ci} className="px-3 py-2 align-top">
                             <div className="text-[13px] text-[#A89878] leading-relaxed whitespace-pre-wrap">{cellValue || "—"}</div>
                           </td>
                         );
                       })}
-                      {/* Status column (last column = "Status Now") */}
-                      <td className="px-3 py-2 align-top">
-                        <select
-                          value={status}
-                          onChange={(e) => commitRow(ri, "status", e.target.value)}
-                          className="text-[11px] px-1.5 py-1 rounded border border-white/[0.08] bg-[#1A1816] focus:outline-none cursor-pointer"
-                          style={{ color: statusCfg.color }}
-                        >
-                          <option value="not_started">Not Started</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="done">Done</option>
-                          <option value="blocked">Blocked</option>
-                        </select>
-                      </td>
                     </>
                   ) : (
                     <>
+                      <td className="px-3 py-2 text-[#D4C4A8] font-medium text-[13px] align-top">{row.area || row.label || ""}</td>
                       {columns.map((_, ci) => {
                         const cell = row.cells?.[ci] || { value: "", cell_status: "not_started" };
                         return (

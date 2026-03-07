@@ -241,7 +241,7 @@ export default function NodeProgressPage() {
           .from("milestones")
           .select("id, title, stream, status, target_week, is_public, pilot_node_id, updated_at")
           .eq("is_public", true)
-          .neq("stream", "investor")
+          .in("stream", ["platform", "pilot"])
           .or(`pilot_node_id.eq.${nodeData.id},pilot_node_id.is.null`)
           .order("created_at"),
         supabase

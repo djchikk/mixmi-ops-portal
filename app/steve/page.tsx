@@ -208,6 +208,7 @@ export default function StevePage() {
           .from("milestones")
           .select("id, title, stream, status, target_week, is_public, updated_at")
           .eq("is_public", true)
+          .in("stream", ["platform", "pilot", "investor"])
           .order("created_at"),
         supabase
           .from("community_contacts")

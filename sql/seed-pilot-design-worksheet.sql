@@ -37,7 +37,7 @@ VALUES (
           "item_status": "blank"
         },
         {
-          "label": "Visual Artists — Carolyn (full autonomy): Carolyn decides who, when, and how. Includes visual artists AND musician friends. Mixed-media node. Free reign on participant selection and pacing.",
+          "label": "Carolyn + Friends — Carolyn (full autonomy): Carolyn decides who, when, and how. Includes visual artists AND musician friends. Mixed-media node. Free reign on participant selection and pacing.",
           "checked": false,
           "notes": "",
           "item_status": "blank"
@@ -62,7 +62,7 @@ VALUES (
       "type": "prompt",
       "title": "Decisions for Block 1",
       "status": "blank",
-      "prompt": "Confirm four starting nodes. Discuss which additional producer friends s will recruit. Confirm Carolyn''s full autonomy on Visual Artists scope. Discuss timing for Kevin Locke widow contact.",
+      "prompt": "Confirm four starting nodes. Discuss which additional producer friends s will recruit. Confirm Carolyn''s full autonomy on Carolyn + Friends scope. Discuss timing for Kevin Locke widow contact.",
       "response": "",
       "notes": ""
     },
@@ -84,7 +84,7 @@ VALUES (
       "rows": [
         { "label": "Kenya (3 months)", "low": 2250, "high": 4800, "amount": null, "notes": "Joshua stipend + participant comp + tools" },
         { "label": "Producers (3 months)", "low": 1500, "high": 3600, "amount": null, "notes": "s self-funds lead; participant stipends for producers'' time" },
-        { "label": "Visual Artists (3 months)", "low": 1500, "high": 3600, "amount": null, "notes": "Carolyn stipend + participant comp" },
+        { "label": "Carolyn + Friends (3 months)", "low": 1500, "high": 3600, "amount": null, "notes": "Carolyn stipend + participant comp" },
         { "label": "Kevin Locke (3 months)", "low": 250, "high": 1000, "amount": null, "notes": "Minimal: s leads with existing tools. Possible gift/honorarium for widow." },
         { "label": "Platform costs (3 mo)", "low": 1245, "high": 1245, "amount": null, "notes": "~$415/mo current burn" },
         { "label": "Contingency (10%)", "low": 770, "high": 1545, "amount": null, "notes": "" },
@@ -114,8 +114,8 @@ VALUES (
         },
         {
           "person": "Carolyn",
-          "leads": "Visual Artists (full autonomy)",
-          "responsibilities": "Visual Artists node: decides participants, pacing, scope. Across all nodes: emailing, educational short videos, asset tracking. Eventually: Kevin Locke handoff recipient. Systematizer role: observing patterns across nodes."
+          "leads": "Carolyn + Friends (full autonomy)",
+          "responsibilities": "Carolyn + Friends node: decides participants, pacing, scope. Across all nodes: emailing, educational short videos, asset tracking. Eventually: Kevin Locke handoff recipient. Systematizer role: observing patterns across nodes."
         },
         {
           "person": "Joshua",
@@ -135,7 +135,7 @@ VALUES (
         { "label": "Upload spreadsheet to Google Sheets. Both review and edit.", "checked": false, "notes": "Owner: s", "item_status": "blank" },
         { "label": "Kenya — this week actions", "checked": false, "notes": "", "item_status": "blank" },
         { "label": "Producers — this week actions", "checked": false, "notes": "", "item_status": "blank" },
-        { "label": "Visual Artists — this week actions", "checked": false, "notes": "", "item_status": "blank" },
+        { "label": "Carolyn + Friends — this week actions", "checked": false, "notes": "", "item_status": "blank" },
         { "label": "Kevin Locke — this week actions", "checked": false, "notes": "", "item_status": "blank" },
         { "label": "Internal (s + Carolyn) — this week actions", "checked": false, "notes": "", "item_status": "blank" }
       ]
@@ -217,7 +217,7 @@ VALUES (
           "label": "Onboarding Flow",
           "cells": [
             { "value": "Someone can go from zero to published content in under 15 minutes. The Judy benchmark", "cell_status": "not_started" },
-            { "value": "Refined based on Kenya + Visual Artists feedback. Pain points resolved", "cell_status": "not_started" },
+            { "value": "Refined based on Kenya + Carolyn + Friends feedback. Pain points resolved", "cell_status": "not_started" },
             { "value": "", "cell_status": "not_started" }
           ]
         },

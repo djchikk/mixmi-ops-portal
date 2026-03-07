@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 interface PilotNode {
   id: string;
   name: string;
+  slug: string | null;
   region: string;
   country: string;
   lead_name: string | null;
@@ -40,6 +41,7 @@ interface Contact {
   organization: string | null;
   relationship_stage: string;
   context: string | null;
+  pilot_node_id: string | null;
   pilot_nodes?: { name: string } | null;
 }
 
@@ -60,6 +62,7 @@ interface EngagementLog {
   description: string | null;
   participant_count: number | null;
   created_at: string;
+  pilot_node_id: string | null;
   pilot_nodes?: { name: string } | null;
 }
 
@@ -1572,6 +1575,20 @@ export default function OpsPortal() {
   const [steveImageUploading, setSteveImageUploading] = useState(false);
   const [worksheetSaving, setWorksheetSaving] = useState(false);
 
+  const [userRole, setUserRole] = useState<string>("admin");
+  const [userNodeId, setUserNodeId] = useState<string | null>(null);
+
+  const [nodePageContent, setNodePageContent] = useState<Record<string, {
+    pilot_node_id: string;
+    narrative: string;
+    image_url: string | null;
+    image_caption: string | null;
+    video_url: string | null;
+    video_caption: string | null;
+  }>>({});
+  const [editingNodePage, setEditingNodePage] = useState<string>("steve");
+  const [nodeImageUploading, setNodeImageUploading] = useState(false);
+
   const handleLogin = async (email: string, password: string) => {
     setLoginLoading(true);
     setLoginError("");
@@ -1593,7 +1610,20 @@ export default function OpsPortal() {
     if (!token) return;
     setLoading(true);
     try {
-      const [nodesRes, msRes, contactsRes, decisionsRes, engRes, wsRes, scRes] = await Promise.all([
+      // Fetch user role (default admin if not found, so existing admins work before seeding)
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role, pilot_node_id")
+        .single();
+      if (roleData) {
+        setUserRole(roleData.role);
+        setUserNodeId(roleData.pilot_node_id);
+      } else {
+        setUserRole("admin");
+        setUserNodeId(null);
+      }
+
+      const [nodesRes, msRes, contactsRes, decisionsRes, engRes, wsRes, scRes, npcRes] = await Promise.all([
         supabase.from("pilot_nodes").select("*").order("created_at"),
         supabase.from("milestones").select("*, pilot_nodes(name)").order("created_at"),
         supabase.from("community_contacts").select("*, pilot_nodes(name)").order("name"),
@@ -1601,6 +1631,7 @@ export default function OpsPortal() {
         supabase.from("engagement_logs").select("*, pilot_nodes(name)").order("created_at", { ascending: false }).limit(20),
         supabase.from("worksheets").select("*, pilot_nodes(name)").order("updated_at", { ascending: false }),
         supabase.from("site_content").select("key, value"),
+        supabase.from("node_page_content").select("pilot_node_id, narrative, image_url, image_caption, video_url, video_caption"),
       ]);
       if (nodesRes.data) setNodes(nodesRes.data);
       if (msRes.data) setMilestones(msRes.data);
@@ -1612,6 +1643,13 @@ export default function OpsPortal() {
         const map: Record<string, string> = {};
         scRes.data.forEach((row: { key: string; value: string }) => { map[row.key] = row.value; });
         setSiteContent(map);
+      }
+      if (npcRes.data) {
+        const map: Record<string, typeof nodePageContent[string]> = {};
+        npcRes.data.forEach((row: { pilot_node_id: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }) => {
+          map[row.pilot_node_id] = row;
+        });
+        setNodePageContent(map);
       }
     } catch (e) {
       console.error("Load error:", e);
@@ -1628,6 +1666,13 @@ export default function OpsPortal() {
       if (session) setToken(session.access_token);
     });
   }, []);
+
+  // Redirect node leaders away from admin-only tabs
+  useEffect(() => {
+    if (userRole === "node_leader" && ["decisions", "worksheets", "nodepages"].includes(tab)) {
+      setTab("overview");
+    }
+  }, [userRole, tab]);
 
   const selectNode = useCallback((node: PilotNode) => {
     setSelectedNode(node);
@@ -1709,18 +1754,32 @@ export default function OpsPortal() {
     );
   }
 
-  const activeMilestones = milestones.filter(
+  const isAdmin = userRole === "admin";
+  const isNodeLeader = userRole === "node_leader";
+
+  const scopedNodes = isAdmin ? nodes : nodes.filter((n) => n.id === userNodeId);
+  const scopedMilestones = isAdmin
+    ? milestones
+    : milestones.filter((m) => m.pilot_node_id === userNodeId || m.pilot_node_id === null);
+  const scopedContacts = isAdmin
+    ? contacts
+    : contacts.filter((c) => c.pilot_node_id === userNodeId);
+  const scopedEngagement = isAdmin
+    ? engagement
+    : engagement.filter((e) => e.pilot_node_id === userNodeId);
+
+  const activeMilestones = scopedMilestones.filter(
     (m) => m.status === "in_progress" || m.status === "next"
   );
-  const doneMilestones = milestones.filter((m) => m.status === "done");
-  const blockedMilestones = milestones.filter((m) => m.status === "blocked");
-  const activeNodes = nodes.filter(
+  const doneMilestones = scopedMilestones.filter((m) => m.status === "done");
+  const blockedMilestones = scopedMilestones.filter((m) => m.status === "blocked");
+  const activeNodes = scopedNodes.filter(
     (n) => n.status === "active" || n.status === "activating"
   );
   const filteredMilestones =
     milestoneFilter === "all"
-      ? milestones
-      : milestones.filter((m) => m.stream === milestoneFilter);
+      ? scopedMilestones
+      : scopedMilestones.filter((m) => m.stream === milestoneFilter);
 
   return (
     <div className="min-h-screen">
@@ -1734,12 +1793,12 @@ export default function OpsPortal() {
         </div>
         <div className="flex gap-1 bg-white/[0.03] rounded-lg p-0.5">
           <Tab label="Overview" active={tab === "overview"} onClick={() => { setTab("overview"); setSelectedNode(null); setSelectedWorksheet(null); }} />
-          <Tab label="Milestones" active={tab === "milestones"} onClick={() => { setTab("milestones"); setSelectedNode(null); setSelectedWorksheet(null); }} count={milestones.length} />
-          <Tab label="Nodes" active={tab === "nodes"} onClick={() => { setTab("nodes"); setSelectedNode(null); setSelectedWorksheet(null); }} count={nodes.length} />
-          <Tab label="Contacts" active={tab === "contacts"} onClick={() => { setTab("contacts"); setSelectedNode(null); setSelectedWorksheet(null); }} count={contacts.length} />
-          <Tab label="Decisions" active={tab === "decisions"} onClick={() => { setTab("decisions"); setSelectedNode(null); setSelectedWorksheet(null); }} count={decisions.length} />
-          <Tab label="Worksheets" active={tab === "worksheets"} onClick={() => { setTab("worksheets"); setSelectedNode(null); setSelectedWorksheet(null); }} count={worksheets.length} />
-          <Tab label="Steve Page" active={tab === "steve"} onClick={() => { setTab("steve"); setSelectedNode(null); setSelectedWorksheet(null); }} />
+          <Tab label="Milestones" active={tab === "milestones"} onClick={() => { setTab("milestones"); setSelectedNode(null); setSelectedWorksheet(null); }} count={scopedMilestones.length} />
+          <Tab label="Nodes" active={tab === "nodes"} onClick={() => { setTab("nodes"); setSelectedNode(null); setSelectedWorksheet(null); }} count={scopedNodes.length} />
+          <Tab label="Contacts" active={tab === "contacts"} onClick={() => { setTab("contacts"); setSelectedNode(null); setSelectedWorksheet(null); }} count={scopedContacts.length} />
+          {isAdmin && <Tab label="Decisions" active={tab === "decisions"} onClick={() => { setTab("decisions"); setSelectedNode(null); setSelectedWorksheet(null); }} count={decisions.length} />}
+          {isAdmin && <Tab label="Worksheets" active={tab === "worksheets"} onClick={() => { setTab("worksheets"); setSelectedNode(null); setSelectedWorksheet(null); }} count={worksheets.length} />}
+          {isAdmin && <Tab label="Node Pages" active={tab === "nodepages"} onClick={() => { setTab("nodepages"); setSelectedNode(null); setSelectedWorksheet(null); }} />}
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -1785,12 +1844,12 @@ export default function OpsPortal() {
         {tab === "overview" && (
           <div>
             <div className="flex gap-4 mb-7">
-              <Stat label="Pilot Nodes" value={nodes.length} color="#5DBF82" />
+              <Stat label="Pilot Nodes" value={scopedNodes.length} color="#5DBF82" />
               <Stat label="Activating" value={activeNodes.length} color="#E8B84D" />
               <Stat label="In Progress" value={activeMilestones.length} color="#D4884A" />
               <Stat label="Completed" value={doneMilestones.length} color="#5DBF82" />
               <Stat label="Blocked" value={blockedMilestones.length} color="#D45A5A" />
-              <Stat label="Contacts" value={contacts.length} color="#9B7ED8" />
+              <Stat label="Contacts" value={scopedContacts.length} color="#9B7ED8" />
             </div>
 
             <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06] mb-6">
@@ -1809,7 +1868,7 @@ export default function OpsPortal() {
                 Pilot Nodes
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {nodes.map((n) => (
+                {scopedNodes.map((n) => (
                   <NodeCard key={n.id} node={n} onClick={() => selectNode(n)} />
                 ))}
               </div>
@@ -1819,12 +1878,12 @@ export default function OpsPortal() {
               <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
                 Recent Activity
               </h3>
-              {engagement.length === 0 ? (
+              {scopedEngagement.length === 0 ? (
                 <div className="text-[#6B5D4D] text-sm italic">
                   No activity logged yet. Engagement events will appear here as nodes become active.
                 </div>
               ) : (
-                engagement.map((e) => (
+                scopedEngagement.map((e) => (
                   <div key={e.id} className="py-2 border-b border-white/[0.05] text-sm">
                     <span className="text-[#8B7B68]">
                       {new Date(e.created_at).toLocaleDateString()}
@@ -1885,7 +1944,7 @@ export default function OpsPortal() {
         {/* NODES */}
         {tab === "nodes" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {nodes.map((n) => (
+            {scopedNodes.map((n) => (
               <NodeCard key={n.id} node={n} onClick={() => selectNode(n)} />
             ))}
           </div>
@@ -1897,7 +1956,7 @@ export default function OpsPortal() {
             <h3 className="text-[15px] font-semibold text-[#D4C4A8] mb-4 tracking-tight">
               Community Contacts
             </h3>
-            {contacts.map((c) => (
+            {scopedContacts.map((c) => (
               <ContactRow key={c.id} c={c} />
             ))}
           </div>
@@ -1957,13 +2016,30 @@ export default function OpsPortal() {
           </div>
         )}
 
-        {tab === "steve" && (
+        {tab === "nodepages" && (() => {
+          const isEditingSteve = editingNodePage === "steve";
+          const editingNode = !isEditingSteve ? nodes.find((n) => n.id === editingNodePage) : null;
+          const npc = editingNode ? nodePageContent[editingNode.id] : null;
+
+          return (
           <div className="space-y-6">
             <div className="bg-white/[0.03] rounded-2xl p-6 border border-white/[0.06]">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-[#E8DCC8]">Steve Page Content</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-semibold text-[#E8DCC8]">Public Pages</h2>
+                  <select
+                    value={editingNodePage}
+                    onChange={(e) => setEditingNodePage(e.target.value)}
+                    className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-sm text-[#D4C4A8]"
+                  >
+                    <option value="steve">Steve (Investor Page)</option>
+                    {nodes.filter((n) => n.slug).map((n) => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <a
-                  href="/steve"
+                  href={isEditingSteve ? "/steve" : `/node/${editingNode?.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-[#C47A3A] hover:text-[#E8B84D] transition-colors"
@@ -1972,140 +2048,315 @@ export default function OpsPortal() {
                 </a>
               </div>
 
-              {/* Narrative */}
-              <div className="mb-6">
-                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
-                  Narrative Message
-                </div>
-                <InlineTextarea
-                  value={siteContent.steve_narrative || ""}
-                  placeholder="Write a personal message for Steve..."
-                  rows={4}
-                  onCommit={async (val) => {
-                    setSiteContent((prev) => ({ ...prev, steve_narrative: val }));
-                    await supabase.from("site_content").upsert({ key: "steve_narrative", value: val, updated_at: new Date().toISOString() });
-                  }}
-                />
-              </div>
-
-              {/* Image */}
-              <div className="mb-6">
-                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
-                  Image
-                </div>
-                {siteContent.steve_image_url ? (
-                  <div className="space-y-2">
-                    <img
-                      src={siteContent.steve_image_url}
-                      alt="Steve page image"
-                      className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
-                    />
-                    <button
-                      onClick={async () => {
-                        setSiteContent((prev) => ({ ...prev, steve_image_url: "" }));
-                        await supabase.from("site_content").upsert({ key: "steve_image_url", value: "", updated_at: new Date().toISOString() });
-                      }}
-                      className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
-                    >
-                      Remove image
-                    </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setSteveImageUploading(true);
-                        try {
-                          const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-                          const path = `steve/${Date.now()}.${ext}`;
-                          const { error } = await supabase.storage.from("public-media").upload(path, file, { upsert: true });
-                          if (error) {
-                            alert(`Upload failed: ${error.message}`);
-                            setSteveImageUploading(false);
-                            return;
-                          }
-                          const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
-                          const publicUrl = urlData.publicUrl;
-                          setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
-                          await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
-                        } catch (err) {
-                          alert(`Upload error: ${err}`);
-                        }
-                        setSteveImageUploading(false);
-                      }}
-                      className="text-sm text-[#A89878] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-white/[0.1] file:bg-white/[0.04] file:text-[#D4C4A8] file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-white/[0.08] file:transition-colors"
-                    />
-                    {steveImageUploading && (
-                      <span className="text-xs text-[#E8B84D] ml-2 animate-pulse">Uploading...</span>
-                    )}
-                  </div>
-                )}
-                <div className="mt-2">
-                  <InlineField
-                    value={siteContent.steve_image_caption || ""}
-                    placeholder="Image caption (optional)"
-                    onCommit={async (val) => {
-                      setSiteContent((prev) => ({ ...prev, steve_image_caption: val }));
-                      await supabase.from("site_content").upsert({ key: "steve_image_caption", value: val, updated_at: new Date().toISOString() });
-                    }}
-                    className="text-sm text-[#8B7B68]"
-                  />
-                </div>
-              </div>
-
-              {/* Video */}
-              <div className="mb-6">
-                <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
-                  Video (YouTube or Vimeo URL)
-                </div>
-                <InlineField
-                  value={siteContent.steve_video_url || ""}
-                  placeholder="Paste YouTube or Vimeo URL..."
-                  onCommit={async (val) => {
-                    setSiteContent((prev) => ({ ...prev, steve_video_url: val }));
-                    await supabase.from("site_content").upsert({ key: "steve_video_url", value: val, updated_at: new Date().toISOString() });
-                  }}
-                  className="text-sm text-[#D4C4A8]"
-                />
-                {siteContent.steve_video_url && (() => {
-                  const url = siteContent.steve_video_url;
-                  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-                  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
-                  const embedUrl = ytMatch
-                    ? `https://www.youtube.com/embed/${ytMatch[1]}`
-                    : vimeoMatch
-                    ? `https://player.vimeo.com/video/${vimeoMatch[1]}`
-                    : null;
-                  if (!embedUrl) return null;
-                  return (
-                    <div className="mt-3 aspect-video rounded-lg overflow-hidden border border-white/[0.08] max-w-md">
-                      <iframe src={embedUrl} title="Video preview" allowFullScreen className="w-full h-full" />
+              {/* ── Steve Page Editor ── */}
+              {isEditingSteve && (
+                <>
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Narrative Message
                     </div>
-                  );
-                })()}
-                <div className="mt-2">
-                  <InlineField
-                    value={siteContent.steve_video_caption || ""}
-                    placeholder="Video caption (optional)"
-                    onCommit={async (val) => {
-                      setSiteContent((prev) => ({ ...prev, steve_video_caption: val }));
-                      await supabase.from("site_content").upsert({ key: "steve_video_caption", value: val, updated_at: new Date().toISOString() });
-                    }}
-                    className="text-sm text-[#8B7B68]"
-                  />
-                </div>
-              </div>
+                    <InlineTextarea
+                      value={siteContent.steve_narrative || ""}
+                      placeholder="Write a personal message for Steve..."
+                      rows={4}
+                      onCommit={async (val) => {
+                        setSiteContent((prev) => ({ ...prev, steve_narrative: val }));
+                        await supabase.from("site_content").upsert({ key: "steve_narrative", value: val, updated_at: new Date().toISOString() });
+                      }}
+                    />
+                  </div>
 
-              <div className="text-xs text-[#6B5D4D] mt-4 italic">
-                Changes save automatically and appear on /steve immediately.
-              </div>
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Image
+                    </div>
+                    {siteContent.steve_image_url ? (
+                      <div className="space-y-2">
+                        <img
+                          src={siteContent.steve_image_url}
+                          alt="Steve page image"
+                          className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
+                        />
+                        <button
+                          onClick={async () => {
+                            setSiteContent((prev) => ({ ...prev, steve_image_url: "" }));
+                            await supabase.from("site_content").upsert({ key: "steve_image_url", value: "", updated_at: new Date().toISOString() });
+                          }}
+                          className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
+                        >
+                          Remove image
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setSteveImageUploading(true);
+                            try {
+                              const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+                              const path = `steve/${Date.now()}.${ext}`;
+                              const { error } = await supabase.storage.from("public-media").upload(path, file, { upsert: true });
+                              if (error) {
+                                alert(`Upload failed: ${error.message}`);
+                                setSteveImageUploading(false);
+                                return;
+                              }
+                              const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
+                              const publicUrl = urlData.publicUrl;
+                              setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
+                              await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
+                            } catch (err) {
+                              alert(`Upload error: ${err}`);
+                            }
+                            setSteveImageUploading(false);
+                          }}
+                          className="text-sm text-[#A89878] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-white/[0.1] file:bg-white/[0.04] file:text-[#D4C4A8] file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-white/[0.08] file:transition-colors"
+                        />
+                        {steveImageUploading && (
+                          <span className="text-xs text-[#E8B84D] ml-2 animate-pulse">Uploading...</span>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2">
+                      <InlineField
+                        value={siteContent.steve_image_caption || ""}
+                        placeholder="Image caption (optional)"
+                        onCommit={async (val) => {
+                          setSiteContent((prev) => ({ ...prev, steve_image_caption: val }));
+                          await supabase.from("site_content").upsert({ key: "steve_image_caption", value: val, updated_at: new Date().toISOString() });
+                        }}
+                        className="text-sm text-[#8B7B68]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Video (YouTube or Vimeo URL)
+                    </div>
+                    <InlineField
+                      value={siteContent.steve_video_url || ""}
+                      placeholder="Paste YouTube or Vimeo URL..."
+                      onCommit={async (val) => {
+                        setSiteContent((prev) => ({ ...prev, steve_video_url: val }));
+                        await supabase.from("site_content").upsert({ key: "steve_video_url", value: val, updated_at: new Date().toISOString() });
+                      }}
+                      className="text-sm text-[#D4C4A8]"
+                    />
+                    {siteContent.steve_video_url && (() => {
+                      const url = siteContent.steve_video_url;
+                      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+                      const embedUrl = ytMatch
+                        ? `https://www.youtube.com/embed/${ytMatch[1]}`
+                        : vimeoMatch
+                        ? `https://player.vimeo.com/video/${vimeoMatch[1]}`
+                        : null;
+                      if (!embedUrl) return null;
+                      return (
+                        <div className="mt-3 aspect-video rounded-lg overflow-hidden border border-white/[0.08] max-w-md">
+                          <iframe src={embedUrl} title="Video preview" allowFullScreen className="w-full h-full" />
+                        </div>
+                      );
+                    })()}
+                    <div className="mt-2">
+                      <InlineField
+                        value={siteContent.steve_video_caption || ""}
+                        placeholder="Video caption (optional)"
+                        onCommit={async (val) => {
+                          setSiteContent((prev) => ({ ...prev, steve_video_caption: val }));
+                          await supabase.from("site_content").upsert({ key: "steve_video_caption", value: val, updated_at: new Date().toISOString() });
+                        }}
+                        className="text-sm text-[#8B7B68]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-[#6B5D4D] mt-4 italic">
+                    Changes save automatically and appear on /steve immediately.
+                  </div>
+                </>
+              )}
+
+              {/* ── Node Page Editor ── */}
+              {!isEditingSteve && editingNode && (
+                <>
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Narrative Message
+                    </div>
+                    <InlineTextarea
+                      value={npc?.narrative || ""}
+                      placeholder={`Write a personal message for the ${editingNode.name} node leader...`}
+                      rows={4}
+                      onCommit={async (val) => {
+                        setNodePageContent((prev) => ({
+                          ...prev,
+                          [editingNode.id]: { ...prev[editingNode.id], pilot_node_id: editingNode.id, narrative: val },
+                        }));
+                        await supabase.from("node_page_content").upsert({
+                          pilot_node_id: editingNode.id,
+                          narrative: val,
+                          updated_at: new Date().toISOString(),
+                        }, { onConflict: "pilot_node_id" });
+                      }}
+                    />
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Image
+                    </div>
+                    {npc?.image_url ? (
+                      <div className="space-y-2">
+                        <img
+                          src={npc.image_url}
+                          alt={`${editingNode.name} page image`}
+                          className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
+                        />
+                        <button
+                          onClick={async () => {
+                            setNodePageContent((prev) => ({
+                              ...prev,
+                              [editingNode.id]: { ...prev[editingNode.id], image_url: null },
+                            }));
+                            await supabase.from("node_page_content").update({ image_url: null, updated_at: new Date().toISOString() }).eq("pilot_node_id", editingNode.id);
+                          }}
+                          className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
+                        >
+                          Remove image
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setNodeImageUploading(true);
+                            try {
+                              const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+                              const path = `nodes/${editingNode.id}/${Date.now()}.${ext}`;
+                              const { error } = await supabase.storage.from("public-media").upload(path, file, { upsert: true });
+                              if (error) {
+                                alert(`Upload failed: ${error.message}`);
+                                setNodeImageUploading(false);
+                                return;
+                              }
+                              const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
+                              const publicUrl = urlData.publicUrl;
+                              setNodePageContent((prev) => ({
+                                ...prev,
+                                [editingNode.id]: { ...prev[editingNode.id], pilot_node_id: editingNode.id, image_url: publicUrl },
+                              }));
+                              await supabase.from("node_page_content").upsert({
+                                pilot_node_id: editingNode.id,
+                                image_url: publicUrl,
+                                updated_at: new Date().toISOString(),
+                              }, { onConflict: "pilot_node_id" });
+                            } catch (err) {
+                              alert(`Upload error: ${err}`);
+                            }
+                            setNodeImageUploading(false);
+                          }}
+                          className="text-sm text-[#A89878] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-white/[0.1] file:bg-white/[0.04] file:text-[#D4C4A8] file:text-xs file:font-semibold file:cursor-pointer hover:file:bg-white/[0.08] file:transition-colors"
+                        />
+                        {nodeImageUploading && (
+                          <span className="text-xs text-[#E8B84D] ml-2 animate-pulse">Uploading...</span>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2">
+                      <InlineField
+                        value={npc?.image_caption || ""}
+                        placeholder="Image caption (optional)"
+                        onCommit={async (val) => {
+                          setNodePageContent((prev) => ({
+                            ...prev,
+                            [editingNode.id]: { ...prev[editingNode.id], image_caption: val },
+                          }));
+                          await supabase.from("node_page_content").upsert({
+                            pilot_node_id: editingNode.id,
+                            image_caption: val,
+                            updated_at: new Date().toISOString(),
+                          }, { onConflict: "pilot_node_id" });
+                        }}
+                        className="text-sm text-[#8B7B68]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
+                      Video (YouTube or Vimeo URL)
+                    </div>
+                    <InlineField
+                      value={npc?.video_url || ""}
+                      placeholder="Paste YouTube or Vimeo URL..."
+                      onCommit={async (val) => {
+                        setNodePageContent((prev) => ({
+                          ...prev,
+                          [editingNode.id]: { ...prev[editingNode.id], video_url: val },
+                        }));
+                        await supabase.from("node_page_content").upsert({
+                          pilot_node_id: editingNode.id,
+                          video_url: val,
+                          updated_at: new Date().toISOString(),
+                        }, { onConflict: "pilot_node_id" });
+                      }}
+                      className="text-sm text-[#D4C4A8]"
+                    />
+                    {npc?.video_url && (() => {
+                      const url = npc.video_url!;
+                      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+                      const embedUrl = ytMatch
+                        ? `https://www.youtube.com/embed/${ytMatch[1]}`
+                        : vimeoMatch
+                        ? `https://player.vimeo.com/video/${vimeoMatch[1]}`
+                        : null;
+                      if (!embedUrl) return null;
+                      return (
+                        <div className="mt-3 aspect-video rounded-lg overflow-hidden border border-white/[0.08] max-w-md">
+                          <iframe src={embedUrl} title="Video preview" allowFullScreen className="w-full h-full" />
+                        </div>
+                      );
+                    })()}
+                    <div className="mt-2">
+                      <InlineField
+                        value={npc?.video_caption || ""}
+                        placeholder="Video caption (optional)"
+                        onCommit={async (val) => {
+                          setNodePageContent((prev) => ({
+                            ...prev,
+                            [editingNode.id]: { ...prev[editingNode.id], video_caption: val },
+                          }));
+                          await supabase.from("node_page_content").upsert({
+                            pilot_node_id: editingNode.id,
+                            video_caption: val,
+                            updated_at: new Date().toISOString(),
+                          }, { onConflict: "pilot_node_id" });
+                        }}
+                        className="text-sm text-[#8B7B68]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-[#6B5D4D] mt-4 italic">
+                    Changes save automatically and appear on /node/{editingNode.slug} immediately.
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        )}
+          );
+        })()}
         </>}
       </div>
 

@@ -1671,6 +1671,11 @@ export default function OpsPortal() {
     image_caption: string | null;
     video_url: string | null;
     video_caption: string | null;
+    draft_narrative: string | null;
+    draft_image_url: string | null;
+    draft_image_caption: string | null;
+    draft_video_url: string | null;
+    draft_video_caption: string | null;
     updates?: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[];
   }>>({});
   const [editingNodePage, setEditingNodePage] = useState<string>("steve");
@@ -1718,7 +1723,7 @@ export default function OpsPortal() {
         supabase.from("engagement_logs").select("*, pilot_nodes(name)").order("created_at", { ascending: false }).limit(20),
         supabase.from("worksheets").select("*, pilot_nodes(name)").order("updated_at", { ascending: false }),
         supabase.from("site_content").select("key, value"),
-        supabase.from("node_page_content").select("pilot_node_id, narrative, image_url, image_caption, video_url, video_caption, updates"),
+        supabase.from("node_page_content").select("pilot_node_id, narrative, image_url, image_caption, video_url, video_caption, draft_narrative, draft_image_url, draft_image_caption, draft_video_url, draft_video_caption, updates"),
       ]);
       if (nodesRes.data) setNodes(nodesRes.data);
       if (msRes.data) setMilestones(msRes.data);
@@ -1733,7 +1738,7 @@ export default function OpsPortal() {
       }
       if (npcRes.data) {
         const map: Record<string, typeof nodePageContent[string]> = {};
-        npcRes.data.forEach((row: { pilot_node_id: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null; updates?: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[] }) => {
+        (npcRes.data as (typeof nodePageContent[string])[]).forEach((row) => {
           map[row.pilot_node_id] = row;
         });
         setNodePageContent(map);
@@ -1754,19 +1759,35 @@ export default function OpsPortal() {
     });
   }, []);
 
-  // Archive-on-save helper for node page content
-  const saveNodePageField = async (
+  // Draft save helper — writes to draft_ columns only, no archiving
+  const saveDraftNodePageField = async (
     nodeId: string,
     field: string,
     value: string | null,
   ) => {
+    const draftField = `draft_${field}` as keyof typeof nodePageContent[string];
+
+    setNodePageContent(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], pilot_node_id: nodeId, [draftField]: value },
+    }));
+
+    await supabase.from("node_page_content").upsert({
+      pilot_node_id: nodeId,
+      [draftField]: value,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "pilot_node_id" });
+  };
+
+  // Publish: archive live content, promote draft to live, clear drafts
+  const publishNodePage = async (nodeId: string) => {
     const current = nodePageContent[nodeId];
-    const isContentField = ["narrative", "image_url", "video_url"].includes(field);
-    const hasContent = current && (current.narrative || current.image_url || current.video_url);
+    if (!current) return;
 
-    let updates = current?.updates || [];
+    const hasLiveContent = current.narrative || current.image_url || current.video_url;
+    let updates = current.updates || [];
 
-    if (isContentField && hasContent) {
+    if (hasLiveContent) {
       const snapshot = {
         date: new Date().toISOString(),
         narrative: current.narrative || "",
@@ -1778,17 +1799,96 @@ export default function OpsPortal() {
       updates = [snapshot, ...updates];
     }
 
-    setNodePageContent(prev => ({
-      ...prev,
-      [nodeId]: { ...prev[nodeId], pilot_node_id: nodeId, [field]: value, updates },
-    }));
-
-    await supabase.from("node_page_content").upsert({
+    const newLive = {
       pilot_node_id: nodeId,
-      [field]: value,
+      narrative: current.draft_narrative ?? current.narrative,
+      image_url: current.draft_image_url ?? current.image_url,
+      image_caption: current.draft_image_caption ?? current.image_caption,
+      video_url: current.draft_video_url ?? current.video_url,
+      video_caption: current.draft_video_caption ?? current.video_caption,
+      draft_narrative: null as string | null,
+      draft_image_url: null as string | null,
+      draft_image_caption: null as string | null,
+      draft_video_url: null as string | null,
+      draft_video_caption: null as string | null,
       updates,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "pilot_node_id" });
+    };
+
+    setNodePageContent(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], ...newLive },
+    }));
+
+    await supabase.from("node_page_content").upsert(newLive, { onConflict: "pilot_node_id" });
+  };
+
+  // Steve page publish
+  const publishStevePage = async () => {
+    type UpdateEntry = { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null };
+    let currentUpdates: UpdateEntry[] = [];
+    try { currentUpdates = JSON.parse(siteContent.steve_updates || "[]"); } catch { /* ignore */ }
+
+    const hasLiveContent = siteContent.steve_narrative || siteContent.steve_image_url || siteContent.steve_video_url;
+    let updates = currentUpdates;
+    if (hasLiveContent) {
+      const snapshot: UpdateEntry = {
+        date: new Date().toISOString(),
+        narrative: siteContent.steve_narrative || "",
+        image_url: siteContent.steve_image_url || null,
+        image_caption: siteContent.steve_image_caption || null,
+        video_url: siteContent.steve_video_url || null,
+        video_caption: siteContent.steve_video_caption || null,
+      };
+      updates = [snapshot, ...currentUpdates];
+    }
+
+    const promotions = [
+      { key: "steve_narrative", value: siteContent.steve_draft_narrative || siteContent.steve_narrative || "" },
+      { key: "steve_image_url", value: siteContent.steve_draft_image_url || siteContent.steve_image_url || "" },
+      { key: "steve_image_caption", value: siteContent.steve_draft_image_caption || siteContent.steve_image_caption || "" },
+      { key: "steve_video_url", value: siteContent.steve_draft_video_url || siteContent.steve_video_url || "" },
+      { key: "steve_video_caption", value: siteContent.steve_draft_video_caption || siteContent.steve_video_caption || "" },
+      { key: "steve_updates", value: JSON.stringify(updates) },
+      { key: "steve_draft_narrative", value: "" },
+      { key: "steve_draft_image_url", value: "" },
+      { key: "steve_draft_image_caption", value: "" },
+      { key: "steve_draft_video_url", value: "" },
+      { key: "steve_draft_video_caption", value: "" },
+    ];
+
+    const newSiteContent = { ...siteContent };
+    promotions.forEach(({ key, value }) => { newSiteContent[key] = value; });
+    setSiteContent(newSiteContent);
+
+    const now = new Date().toISOString();
+    await Promise.all(
+      promotions.map(({ key, value }) =>
+        supabase.from("site_content").upsert({ key, value, updated_at: now })
+      )
+    );
+  };
+
+  // Draft detection helpers
+  const nodeHasDraft = (nodeId: string): boolean => {
+    const npc = nodePageContent[nodeId];
+    if (!npc) return false;
+    return (
+      (npc.draft_narrative != null && npc.draft_narrative !== (npc.narrative || "")) ||
+      (npc.draft_image_url != null && npc.draft_image_url !== (npc.image_url || "")) ||
+      (npc.draft_image_caption != null && npc.draft_image_caption !== (npc.image_caption || "")) ||
+      (npc.draft_video_url != null && npc.draft_video_url !== (npc.video_url || "")) ||
+      (npc.draft_video_caption != null && npc.draft_video_caption !== (npc.video_caption || ""))
+    );
+  };
+
+  const steveHasDraft = (): boolean => {
+    const fields = ["narrative", "image_url", "image_caption", "video_url", "video_caption"];
+    return fields.some(f => {
+      const draftVal = siteContent[`steve_draft_${f}`];
+      const liveVal = siteContent[`steve_${f}`] || "";
+      return draftVal != null && draftVal !== "" && draftVal !== liveVal;
+    });
   };
 
   // Redirect node leaders away from admin-only tabs
@@ -2184,17 +2284,29 @@ export default function OpsPortal() {
               {/* ── Steve Page Editor ── */}
               {isEditingSteve && (
                 <>
+                  {steveHasDraft() ? (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#332A18]/60 border border-[#E8B84D]/20">
+                      <span className="w-2 h-2 rounded-full bg-[#E8B84D] animate-pulse" />
+                      <span className="text-xs text-[#E8B84D] font-semibold uppercase tracking-wider">Draft — not yet published</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#1A2E22]/60 border border-[#5DBF82]/20">
+                      <span className="w-2 h-2 rounded-full bg-[#5DBF82]" />
+                      <span className="text-xs text-[#5DBF82] font-semibold uppercase tracking-wider">Published — live on page</span>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Narrative Message
                     </div>
                     <InlineTextarea
-                      value={siteContent.steve_narrative || ""}
+                      value={siteContent.steve_draft_narrative || siteContent.steve_narrative || ""}
                       placeholder="Write a personal message for Steve..."
                       rows={4}
                       onCommit={async (val) => {
-                        setSiteContent((prev) => ({ ...prev, steve_narrative: val }));
-                        await supabase.from("site_content").upsert({ key: "steve_narrative", value: val, updated_at: new Date().toISOString() });
+                        setSiteContent((prev) => ({ ...prev, steve_draft_narrative: val }));
+                        await supabase.from("site_content").upsert({ key: "steve_draft_narrative", value: val, updated_at: new Date().toISOString() });
                       }}
                     />
                   </div>
@@ -2203,17 +2315,17 @@ export default function OpsPortal() {
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Image
                     </div>
-                    {siteContent.steve_image_url ? (
+                    {(siteContent.steve_draft_image_url || siteContent.steve_image_url) ? (
                       <div className="space-y-2">
                         <img
-                          src={siteContent.steve_image_url}
+                          src={siteContent.steve_draft_image_url || siteContent.steve_image_url}
                           alt="Steve page image"
                           className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
                         />
                         <button
                           onClick={async () => {
-                            setSiteContent((prev) => ({ ...prev, steve_image_url: "" }));
-                            await supabase.from("site_content").upsert({ key: "steve_image_url", value: "", updated_at: new Date().toISOString() });
+                            setSiteContent((prev) => ({ ...prev, steve_draft_image_url: "" }));
+                            await supabase.from("site_content").upsert({ key: "steve_draft_image_url", value: "", updated_at: new Date().toISOString() });
                           }}
                           className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
                         >
@@ -2240,8 +2352,8 @@ export default function OpsPortal() {
                               }
                               const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
                               const publicUrl = urlData.publicUrl;
-                              setSiteContent((prev) => ({ ...prev, steve_image_url: publicUrl }));
-                              await supabase.from("site_content").upsert({ key: "steve_image_url", value: publicUrl, updated_at: new Date().toISOString() });
+                              setSiteContent((prev) => ({ ...prev, steve_draft_image_url: publicUrl }));
+                              await supabase.from("site_content").upsert({ key: "steve_draft_image_url", value: publicUrl, updated_at: new Date().toISOString() });
                             } catch (err) {
                               alert(`Upload error: ${err}`);
                             }
@@ -2256,11 +2368,11 @@ export default function OpsPortal() {
                     )}
                     <div className="mt-2">
                       <InlineField
-                        value={siteContent.steve_image_caption || ""}
+                        value={siteContent.steve_draft_image_caption || siteContent.steve_image_caption || ""}
                         placeholder="Image caption (optional)"
                         onCommit={async (val) => {
-                          setSiteContent((prev) => ({ ...prev, steve_image_caption: val }));
-                          await supabase.from("site_content").upsert({ key: "steve_image_caption", value: val, updated_at: new Date().toISOString() });
+                          setSiteContent((prev) => ({ ...prev, steve_draft_image_caption: val }));
+                          await supabase.from("site_content").upsert({ key: "steve_draft_image_caption", value: val, updated_at: new Date().toISOString() });
                         }}
                         className="text-sm text-[#8B7B68]"
                       />
@@ -2272,16 +2384,16 @@ export default function OpsPortal() {
                       Video (YouTube or Vimeo URL)
                     </div>
                     <InlineField
-                      value={siteContent.steve_video_url || ""}
+                      value={siteContent.steve_draft_video_url || siteContent.steve_video_url || ""}
                       placeholder="Paste YouTube or Vimeo URL..."
                       onCommit={async (val) => {
-                        setSiteContent((prev) => ({ ...prev, steve_video_url: val }));
-                        await supabase.from("site_content").upsert({ key: "steve_video_url", value: val, updated_at: new Date().toISOString() });
+                        setSiteContent((prev) => ({ ...prev, steve_draft_video_url: val }));
+                        await supabase.from("site_content").upsert({ key: "steve_draft_video_url", value: val, updated_at: new Date().toISOString() });
                       }}
                       className="text-sm text-[#D4C4A8]"
                     />
-                    {siteContent.steve_video_url && (() => {
-                      const url = siteContent.steve_video_url;
+                    {(siteContent.steve_draft_video_url || siteContent.steve_video_url) && (() => {
+                      const url = siteContent.steve_draft_video_url || siteContent.steve_video_url;
                       const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
                       const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
                       const embedUrl = ytMatch
@@ -2298,19 +2410,32 @@ export default function OpsPortal() {
                     })()}
                     <div className="mt-2">
                       <InlineField
-                        value={siteContent.steve_video_caption || ""}
+                        value={siteContent.steve_draft_video_caption || siteContent.steve_video_caption || ""}
                         placeholder="Video caption (optional)"
                         onCommit={async (val) => {
-                          setSiteContent((prev) => ({ ...prev, steve_video_caption: val }));
-                          await supabase.from("site_content").upsert({ key: "steve_video_caption", value: val, updated_at: new Date().toISOString() });
+                          setSiteContent((prev) => ({ ...prev, steve_draft_video_caption: val }));
+                          await supabase.from("site_content").upsert({ key: "steve_draft_video_caption", value: val, updated_at: new Date().toISOString() });
                         }}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
                   </div>
 
-                  <div className="text-xs text-[#6B5D4D] mt-4 italic">
-                    Changes save automatically and appear on /steve immediately.
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/[0.06]">
+                    <span className="text-xs text-[#6B5D4D] italic">
+                      Changes auto-save as drafts. Click Publish to update the live page.
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (confirm("Publish this update? Current live content will be archived.")) {
+                          publishStevePage();
+                        }
+                      }}
+                      disabled={!steveHasDraft()}
+                      className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
+                    >
+                      Publish Update
+                    </button>
                   </div>
                 </>
               )}
@@ -2318,15 +2443,27 @@ export default function OpsPortal() {
               {/* ── Node Page Editor ── */}
               {!isEditingSteve && editingNode && (
                 <>
+                  {nodeHasDraft(editingNode.id) ? (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#332A18]/60 border border-[#E8B84D]/20">
+                      <span className="w-2 h-2 rounded-full bg-[#E8B84D] animate-pulse" />
+                      <span className="text-xs text-[#E8B84D] font-semibold uppercase tracking-wider">Draft — not yet published</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#1A2E22]/60 border border-[#5DBF82]/20">
+                      <span className="w-2 h-2 rounded-full bg-[#5DBF82]" />
+                      <span className="text-xs text-[#5DBF82] font-semibold uppercase tracking-wider">Published — live on page</span>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Narrative Message
                     </div>
                     <InlineTextarea
-                      value={npc?.narrative || ""}
+                      value={npc?.draft_narrative ?? npc?.narrative ?? ""}
                       placeholder={`Write a personal message for the ${editingNode.name} node leader...`}
                       rows={4}
-                      onCommit={(val) => saveNodePageField(editingNode.id, "narrative", val)}
+                      onCommit={(val) => saveDraftNodePageField(editingNode.id, "narrative", val)}
                     />
                   </div>
 
@@ -2334,15 +2471,15 @@ export default function OpsPortal() {
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Image
                     </div>
-                    {npc?.image_url ? (
+                    {(npc?.draft_image_url ?? npc?.image_url) ? (
                       <div className="space-y-2">
                         <img
-                          src={npc.image_url}
+                          src={(npc?.draft_image_url ?? npc?.image_url)!}
                           alt={`${editingNode.name} page image`}
                           className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
                         />
                         <button
-                          onClick={() => saveNodePageField(editingNode.id, "image_url", null)}
+                          onClick={() => saveDraftNodePageField(editingNode.id, "image_url", "")}
                           className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
                         >
                           Remove image
@@ -2368,7 +2505,7 @@ export default function OpsPortal() {
                               }
                               const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
                               const publicUrl = urlData.publicUrl;
-                              await saveNodePageField(editingNode.id, "image_url", publicUrl);
+                              await saveDraftNodePageField(editingNode.id, "image_url", publicUrl);
                             } catch (err) {
                               alert(`Upload error: ${err}`);
                             }
@@ -2383,9 +2520,9 @@ export default function OpsPortal() {
                     )}
                     <div className="mt-2">
                       <InlineField
-                        value={npc?.image_caption || ""}
+                        value={npc?.draft_image_caption ?? npc?.image_caption ?? ""}
                         placeholder="Image caption (optional)"
-                        onCommit={(val) => saveNodePageField(editingNode.id, "image_caption", val)}
+                        onCommit={(val) => saveDraftNodePageField(editingNode.id, "image_caption", val)}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2396,13 +2533,13 @@ export default function OpsPortal() {
                       Video (YouTube or Vimeo URL)
                     </div>
                     <InlineField
-                      value={npc?.video_url || ""}
+                      value={npc?.draft_video_url ?? npc?.video_url ?? ""}
                       placeholder="Paste YouTube or Vimeo URL..."
-                      onCommit={(val) => saveNodePageField(editingNode.id, "video_url", val)}
+                      onCommit={(val) => saveDraftNodePageField(editingNode.id, "video_url", val)}
                       className="text-sm text-[#D4C4A8]"
                     />
-                    {npc?.video_url && (() => {
-                      const url = npc.video_url!;
+                    {(npc?.draft_video_url ?? npc?.video_url) && (() => {
+                      const url = (npc?.draft_video_url ?? npc?.video_url)!;
                       const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
                       const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
                       const embedUrl = ytMatch
@@ -2419,16 +2556,29 @@ export default function OpsPortal() {
                     })()}
                     <div className="mt-2">
                       <InlineField
-                        value={npc?.video_caption || ""}
+                        value={npc?.draft_video_caption ?? npc?.video_caption ?? ""}
                         placeholder="Video caption (optional)"
-                        onCommit={(val) => saveNodePageField(editingNode.id, "video_caption", val)}
+                        onCommit={(val) => saveDraftNodePageField(editingNode.id, "video_caption", val)}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
                   </div>
 
-                  <div className="text-xs text-[#6B5D4D] mt-4 italic">
-                    Changes save automatically and appear on /node/{editingNode.slug} immediately.
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/[0.06]">
+                    <span className="text-xs text-[#6B5D4D] italic">
+                      Changes auto-save as drafts. Click Publish to update the live page.
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (confirm("Publish this update? Current live content will be archived.")) {
+                          publishNodePage(editingNode.id);
+                        }
+                      }}
+                      disabled={!nodeHasDraft(editingNode.id)}
+                      className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
+                    >
+                      Publish Update
+                    </button>
                   </div>
                 </>
               )}

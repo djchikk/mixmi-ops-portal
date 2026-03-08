@@ -223,6 +223,7 @@ export default function StevePage() {
             "steve_image_caption",
             "steve_video_url",
             "steve_video_caption",
+            "steve_updates",
           ]),
       ]);
 
@@ -256,6 +257,9 @@ export default function StevePage() {
   const videoUrl = content.steve_video_url || "";
   const videoCaption = content.steve_video_caption || "";
   const hasMedia = imageUrl.trim() !== "" || videoUrl.trim() !== "";
+  const steveUpdates: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[] = (() => {
+    try { return JSON.parse(content.steve_updates || "[]"); } catch { return []; }
+  })();
 
   const activeNodeCount = nodes.filter((n) =>
     ["activating", "active", "scaling"].includes(n.status)
@@ -404,6 +408,57 @@ export default function StevePage() {
                     </div>
                   );
                 })()}
+              </section>
+            </FadeIn>
+          )}
+
+          {/* ── Update History ── */}
+          {steveUpdates.length > 0 && (
+            <FadeIn delay={175}>
+              <section className="mb-16">
+                <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
+                  Updates
+                </h2>
+                <div className="space-y-0">
+                  {steveUpdates.map((entry, i) => (
+                    <div key={i} className="border-l-2 border-[#8B7B68]/30 pl-5 pb-8 relative">
+                      <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-[#8B7B68]/60" />
+                      <p className="text-[11px] text-[#6B5D4D] uppercase tracking-wider font-semibold mb-2">
+                        {new Date(entry.date).toLocaleDateString("en-US", {
+                          month: "long", day: "numeric", year: "numeric",
+                        })}
+                      </p>
+                      {entry.narrative && (
+                        <p className="text-sm text-[#A89878] leading-relaxed whitespace-pre-line mb-3">
+                          {entry.narrative}
+                        </p>
+                      )}
+                      {entry.image_url && (
+                        <div className="mb-3">
+                          <img src={entry.image_url} alt={entry.image_caption || "Previous update"} className="max-h-48 rounded-lg border border-white/[0.06] object-cover" />
+                          {entry.image_caption && <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.image_caption}</p>}
+                        </div>
+                      )}
+                      {entry.video_url && (() => {
+                        const { type, embedUrl } = parseVideoEmbed(entry.video_url);
+                        if (type === "unknown") return (
+                          <div className="mb-3">
+                            <a href={entry.video_url} target="_blank" rel="noopener noreferrer" className="text-[#C47A3A] hover:text-[#E8B84D] transition-colors text-xs">Watch video →</a>
+                            {entry.video_caption && <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.video_caption}</p>}
+                          </div>
+                        );
+                        return (
+                          <div className="mb-3">
+                            <div className="aspect-video rounded-lg overflow-hidden border border-white/[0.06] max-w-sm">
+                              <iframe src={embedUrl} title={entry.video_caption || "Video"} allowFullScreen className="w-full h-full" />
+                            </div>
+                            {entry.video_caption && <p className="text-[11px] text-[#6B5D4D] mt-1 italic">{entry.video_caption}</p>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                </div>
               </section>
             </FadeIn>
           )}

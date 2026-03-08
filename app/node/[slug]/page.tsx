@@ -447,14 +447,14 @@ export default function NodeProgressPage() {
           )}
 
           {/* ── Update History ── */}
-          {updates.length > 0 && (
+          {updates.length > 1 && (
             <FadeIn delay={175}>
               <section className="mb-16">
                 <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
-                  Updates
+                  Previous Updates
                 </h2>
                 <div className="space-y-0">
-                  {updates.map((entry, i) => {
+                  {updates.slice(1).map((entry, i) => {
                     const hasEntryMedia = entry.image_url || entry.video_url;
                     return (
                       <div key={i} className="border-l-2 border-[#8B7B68]/30 pl-5 pb-8 relative">

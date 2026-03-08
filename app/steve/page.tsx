@@ -413,14 +413,14 @@ export default function StevePage() {
           )}
 
           {/* ── Update History ── */}
-          {steveUpdates.length > 0 && (
+          {steveUpdates.length > 1 && (
             <FadeIn delay={175}>
               <section className="mb-16">
                 <h2 className="text-sm text-[#8B7B68] uppercase tracking-widest font-semibold mb-5">
-                  Updates
+                  Previous Updates
                 </h2>
                 <div className="space-y-0">
-                  {steveUpdates.map((entry, i) => (
+                  {steveUpdates.slice(1).map((entry, i) => (
                     <div key={i} className="border-l-2 border-[#8B7B68]/30 pl-5 pb-8 relative">
                       <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-[#8B7B68]/60" />
                       <p className="text-[11px] text-[#6B5D4D] uppercase tracking-wider font-semibold mb-2">

@@ -1664,6 +1664,10 @@ export default function OpsPortal() {
   const [userRole, setUserRole] = useState<string>("admin");
   const [userNodeId, setUserNodeId] = useState<string | null>(null);
 
+  type PostEntry = { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null };
+  type EmptyPost = { narrative: string; image_url: string; image_caption: string; video_url: string; video_caption: string };
+  const emptyPost = (): EmptyPost => ({ narrative: "", image_url: "", image_caption: "", video_url: "", video_caption: "" });
+
   const [nodePageContent, setNodePageContent] = useState<Record<string, {
     pilot_node_id: string;
     narrative: string;
@@ -1676,10 +1680,16 @@ export default function OpsPortal() {
     draft_image_caption: string | null;
     draft_video_url: string | null;
     draft_video_caption: string | null;
-    updates?: { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null }[];
+    updates?: PostEntry[];
   }>>({});
   const [editingNodePage, setEditingNodePage] = useState<string>("steve");
   const [nodeImageUploading, setNodeImageUploading] = useState(false);
+
+  // Post-based editor state
+  const [nodeEditingPostIndex, setNodeEditingPostIndex] = useState<number | null>(null);
+  const [nodeComposePost, setNodeComposePost] = useState<Record<string, EmptyPost>>({});
+  const [steveEditingPostIndex, setSteveEditingPostIndex] = useState<number | null>(null);
+  const [steveComposePost, setSteveComposePost] = useState<EmptyPost>(emptyPost());
 
   const handleLogin = async (email: string, password: string) => {
     setLoginLoading(true);
@@ -1734,11 +1744,37 @@ export default function OpsPortal() {
       if (scRes.data) {
         const map: Record<string, string> = {};
         scRes.data.forEach((row: { key: string; value: string }) => { map[row.key] = row.value; });
+        // Data promotion: if Steve has live content but no updates, create updates[0]
+        const hasSteveLive = map.steve_narrative || map.steve_image_url || map.steve_video_url;
+        let steveUpd: PostEntry[] = [];
+        try { steveUpd = JSON.parse(map.steve_updates || "[]"); } catch { /* ignore */ }
+        if (hasSteveLive && steveUpd.length === 0) {
+          steveUpd = [{
+            date: new Date().toISOString(),
+            narrative: map.steve_narrative || "",
+            image_url: map.steve_image_url || null,
+            image_caption: map.steve_image_caption || null,
+            video_url: map.steve_video_url || null,
+            video_caption: map.steve_video_caption || null,
+          }];
+          map.steve_updates = JSON.stringify(steveUpd);
+        }
         setSiteContent(map);
       }
       if (npcRes.data) {
         const map: Record<string, typeof nodePageContent[string]> = {};
         (npcRes.data as (typeof nodePageContent[string])[]).forEach((row) => {
+          // Data promotion: if live fields have content but updates is empty, create updates[0]
+          if ((row.narrative || row.image_url || row.video_url) && (!row.updates || row.updates.length === 0)) {
+            row.updates = [{
+              date: new Date().toISOString(),
+              narrative: row.narrative || "",
+              image_url: row.image_url || null,
+              image_caption: row.image_caption || null,
+              video_url: row.video_url || null,
+              video_caption: row.video_caption || null,
+            }];
+          }
           map[row.pilot_node_id] = row;
         });
         setNodePageContent(map);
@@ -1759,136 +1795,219 @@ export default function OpsPortal() {
     });
   }, []);
 
-  // Draft save helper — writes to draft_ columns only, no archiving
-  const saveDraftNodePageField = async (
-    nodeId: string,
-    field: string,
-    value: string | null,
-  ) => {
-    const draftField = `draft_${field}` as keyof typeof nodePageContent[string];
+  // ── Post-based editor helpers ──
 
-    setNodePageContent(prev => ({
-      ...prev,
-      [nodeId]: { ...prev[nodeId], pilot_node_id: nodeId, [draftField]: value },
-    }));
+  // Node: publish a new post (prepend to updates array)
+  const publishNewNodePost = async (nodeId: string) => {
+    const compose = nodeComposePost[nodeId];
+    if (!compose || (!compose.narrative && !compose.image_url && !compose.video_url)) return;
 
-    await supabase.from("node_page_content").upsert({
-      pilot_node_id: nodeId,
-      [draftField]: value,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "pilot_node_id" });
-  };
+    const newPost: PostEntry = {
+      date: new Date().toISOString(),
+      narrative: compose.narrative,
+      image_url: compose.image_url || null,
+      image_caption: compose.image_caption || null,
+      video_url: compose.video_url || null,
+      video_caption: compose.video_caption || null,
+    };
 
-  // Publish: archive live content, promote draft to live, clear drafts
-  const publishNodePage = async (nodeId: string) => {
     const current = nodePageContent[nodeId];
-    if (!current) return;
+    const updates = [newPost, ...(current?.updates || [])];
 
-    const hasLiveContent = current.narrative || current.image_url || current.video_url;
-    let updates = current.updates || [];
-
-    if (hasLiveContent) {
-      const snapshot = {
-        date: new Date().toISOString(),
-        narrative: current.narrative || "",
-        image_url: current.image_url || null,
-        image_caption: current.image_caption || null,
-        video_url: current.video_url || null,
-        video_caption: current.video_caption || null,
-      };
-      updates = [snapshot, ...updates];
-    }
-
-    const newLive = {
+    const payload = {
       pilot_node_id: nodeId,
-      narrative: current.draft_narrative ?? current.narrative,
-      image_url: current.draft_image_url ?? current.image_url,
-      image_caption: current.draft_image_caption ?? current.image_caption,
-      video_url: current.draft_video_url ?? current.video_url,
-      video_caption: current.draft_video_caption ?? current.video_caption,
-      draft_narrative: null as string | null,
-      draft_image_url: null as string | null,
-      draft_image_caption: null as string | null,
-      draft_video_url: null as string | null,
-      draft_video_caption: null as string | null,
+      narrative: newPost.narrative,
+      image_url: newPost.image_url,
+      image_caption: newPost.image_caption,
+      video_url: newPost.video_url,
+      video_caption: newPost.video_caption,
       updates,
       updated_at: new Date().toISOString(),
     };
 
     setNodePageContent(prev => ({
       ...prev,
-      [nodeId]: { ...prev[nodeId], ...newLive },
+      [nodeId]: { ...prev[nodeId], ...payload },
     }));
+    setNodeComposePost(prev => ({ ...prev, [nodeId]: emptyPost() }));
 
-    await supabase.from("node_page_content").upsert(newLive, { onConflict: "pilot_node_id" });
+    await supabase.from("node_page_content").upsert(payload, { onConflict: "pilot_node_id" });
   };
 
-  // Steve page publish
-  const publishStevePage = async () => {
-    type UpdateEntry = { date: string; narrative: string; image_url: string | null; image_caption: string | null; video_url: string | null; video_caption: string | null };
-    let currentUpdates: UpdateEntry[] = [];
+  // Node: save edits to an existing post
+  const saveExistingNodePost = async (nodeId: string, index: number) => {
+    const compose = nodeComposePost[nodeId];
+    if (!compose) return;
+
+    const current = nodePageContent[nodeId];
+    if (!current?.updates) return;
+
+    const updatedPost: PostEntry = {
+      date: current.updates[index].date,
+      narrative: compose.narrative,
+      image_url: compose.image_url || null,
+      image_caption: compose.image_caption || null,
+      video_url: compose.video_url || null,
+      video_caption: compose.video_caption || null,
+    };
+
+    const updates = [...current.updates];
+    updates[index] = updatedPost;
+
+    // If editing the latest post (index 0), also update live fields
+    const liveUpdate = index === 0 ? {
+      narrative: updatedPost.narrative,
+      image_url: updatedPost.image_url,
+      image_caption: updatedPost.image_caption,
+      video_url: updatedPost.video_url,
+      video_caption: updatedPost.video_caption,
+    } : {};
+
+    const payload = {
+      pilot_node_id: nodeId,
+      ...liveUpdate,
+      updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    setNodePageContent(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], ...payload },
+    }));
+    setNodeEditingPostIndex(null);
+    setNodeComposePost(prev => ({ ...prev, [nodeId]: emptyPost() }));
+
+    await supabase.from("node_page_content").upsert(payload, { onConflict: "pilot_node_id" });
+  };
+
+  // Node: start editing a published post
+  const startEditingNodePost = (nodeId: string, index: number) => {
+    const post = nodePageContent[nodeId]?.updates?.[index];
+    if (!post) return;
+    setNodeEditingPostIndex(index);
+    setNodeComposePost(prev => ({
+      ...prev,
+      [nodeId]: {
+        narrative: post.narrative || "",
+        image_url: post.image_url || "",
+        image_caption: post.image_caption || "",
+        video_url: post.video_url || "",
+        video_caption: post.video_caption || "",
+      },
+    }));
+  };
+
+  // Node: cancel editing
+  const cancelEditingNodePost = (nodeId: string) => {
+    setNodeEditingPostIndex(null);
+    setNodeComposePost(prev => ({ ...prev, [nodeId]: emptyPost() }));
+  };
+
+  // Steve: publish a new post
+  const publishNewStevePost = async () => {
+    if (!steveComposePost.narrative && !steveComposePost.image_url && !steveComposePost.video_url) return;
+
+    const newPost: PostEntry = {
+      date: new Date().toISOString(),
+      narrative: steveComposePost.narrative,
+      image_url: steveComposePost.image_url || null,
+      image_caption: steveComposePost.image_caption || null,
+      video_url: steveComposePost.video_url || null,
+      video_caption: steveComposePost.video_caption || null,
+    };
+
+    let currentUpdates: PostEntry[] = [];
     try { currentUpdates = JSON.parse(siteContent.steve_updates || "[]"); } catch { /* ignore */ }
+    const updates = [newPost, ...currentUpdates];
 
-    const hasLiveContent = siteContent.steve_narrative || siteContent.steve_image_url || siteContent.steve_video_url;
-    let updates = currentUpdates;
-    if (hasLiveContent) {
-      const snapshot: UpdateEntry = {
-        date: new Date().toISOString(),
-        narrative: siteContent.steve_narrative || "",
-        image_url: siteContent.steve_image_url || null,
-        image_caption: siteContent.steve_image_caption || null,
-        video_url: siteContent.steve_video_url || null,
-        video_caption: siteContent.steve_video_caption || null,
-      };
-      updates = [snapshot, ...currentUpdates];
-    }
-
-    const promotions = [
-      { key: "steve_narrative", value: siteContent.steve_draft_narrative || siteContent.steve_narrative || "" },
-      { key: "steve_image_url", value: siteContent.steve_draft_image_url || siteContent.steve_image_url || "" },
-      { key: "steve_image_caption", value: siteContent.steve_draft_image_caption || siteContent.steve_image_caption || "" },
-      { key: "steve_video_url", value: siteContent.steve_draft_video_url || siteContent.steve_video_url || "" },
-      { key: "steve_video_caption", value: siteContent.steve_draft_video_caption || siteContent.steve_video_caption || "" },
+    const upserts = [
+      { key: "steve_narrative", value: newPost.narrative },
+      { key: "steve_image_url", value: newPost.image_url || "" },
+      { key: "steve_image_caption", value: newPost.image_caption || "" },
+      { key: "steve_video_url", value: newPost.video_url || "" },
+      { key: "steve_video_caption", value: newPost.video_caption || "" },
       { key: "steve_updates", value: JSON.stringify(updates) },
-      { key: "steve_draft_narrative", value: "" },
-      { key: "steve_draft_image_url", value: "" },
-      { key: "steve_draft_image_caption", value: "" },
-      { key: "steve_draft_video_url", value: "" },
-      { key: "steve_draft_video_caption", value: "" },
     ];
 
     const newSiteContent = { ...siteContent };
-    promotions.forEach(({ key, value }) => { newSiteContent[key] = value; });
+    upserts.forEach(({ key, value }) => { newSiteContent[key] = value; });
     setSiteContent(newSiteContent);
+    setSteveComposePost(emptyPost());
 
     const now = new Date().toISOString();
-    await Promise.all(
-      promotions.map(({ key, value }) =>
-        supabase.from("site_content").upsert({ key, value, updated_at: now })
-      )
-    );
+    await Promise.all(upserts.map(({ key, value }) =>
+      supabase.from("site_content").upsert({ key, value, updated_at: now })
+    ));
   };
 
-  // Draft detection helpers
-  const nodeHasDraft = (nodeId: string): boolean => {
-    const npc = nodePageContent[nodeId];
-    if (!npc) return false;
-    return (
-      (npc.draft_narrative != null && npc.draft_narrative !== (npc.narrative || "")) ||
-      (npc.draft_image_url != null && npc.draft_image_url !== (npc.image_url || "")) ||
-      (npc.draft_image_caption != null && npc.draft_image_caption !== (npc.image_caption || "")) ||
-      (npc.draft_video_url != null && npc.draft_video_url !== (npc.video_url || "")) ||
-      (npc.draft_video_caption != null && npc.draft_video_caption !== (npc.video_caption || ""))
-    );
+  // Steve: save edits to existing post
+  const saveExistingStevePost = async (index: number) => {
+    let currentUpdates: PostEntry[] = [];
+    try { currentUpdates = JSON.parse(siteContent.steve_updates || "[]"); } catch { /* ignore */ }
+
+    const updatedPost: PostEntry = {
+      date: currentUpdates[index].date,
+      narrative: steveComposePost.narrative,
+      image_url: steveComposePost.image_url || null,
+      image_caption: steveComposePost.image_caption || null,
+      video_url: steveComposePost.video_url || null,
+      video_caption: steveComposePost.video_caption || null,
+    };
+
+    const updates = [...currentUpdates];
+    updates[index] = updatedPost;
+
+    // If editing latest post, also update live fields
+    const liveUpserts = index === 0 ? [
+      { key: "steve_narrative", value: updatedPost.narrative },
+      { key: "steve_image_url", value: updatedPost.image_url || "" },
+      { key: "steve_image_caption", value: updatedPost.image_caption || "" },
+      { key: "steve_video_url", value: updatedPost.video_url || "" },
+      { key: "steve_video_caption", value: updatedPost.video_caption || "" },
+    ] : [];
+
+    const upserts = [
+      ...liveUpserts,
+      { key: "steve_updates", value: JSON.stringify(updates) },
+    ];
+
+    const newSiteContent = { ...siteContent };
+    upserts.forEach(({ key, value }) => { newSiteContent[key] = value; });
+    setSiteContent(newSiteContent);
+    setSteveEditingPostIndex(null);
+    setSteveComposePost(emptyPost());
+
+    const now = new Date().toISOString();
+    await Promise.all(upserts.map(({ key, value }) =>
+      supabase.from("site_content").upsert({ key, value, updated_at: now })
+    ));
   };
 
-  const steveHasDraft = (): boolean => {
-    const fields = ["narrative", "image_url", "image_caption", "video_url", "video_caption"];
-    return fields.some(f => {
-      const draftVal = siteContent[`steve_draft_${f}`];
-      const liveVal = siteContent[`steve_${f}`] || "";
-      return draftVal != null && draftVal !== "" && draftVal !== liveVal;
+  // Steve: start editing a published post
+  const startEditingStevePost = (index: number) => {
+    let currentUpdates: PostEntry[] = [];
+    try { currentUpdates = JSON.parse(siteContent.steve_updates || "[]"); } catch { /* ignore */ }
+    const post = currentUpdates[index];
+    if (!post) return;
+    setSteveEditingPostIndex(index);
+    setSteveComposePost({
+      narrative: post.narrative || "",
+      image_url: post.image_url || "",
+      image_caption: post.image_caption || "",
+      video_url: post.video_url || "",
+      video_caption: post.video_caption || "",
     });
+  };
+
+  // Steve: cancel editing
+  const cancelEditingStevePost = () => {
+    setSteveEditingPostIndex(null);
+    setSteveComposePost(emptyPost());
+  };
+
+  // Helper to get Steve updates array
+  const getSteveUpdates = (): PostEntry[] => {
+    try { return JSON.parse(siteContent.steve_updates || "[]"); } catch { return []; }
   };
 
   // Redirect node leaders away from admin-only tabs
@@ -2262,7 +2381,12 @@ export default function OpsPortal() {
                   <h2 className="text-lg font-semibold text-[#E8DCC8]">Public Pages</h2>
                   <select
                     value={editingNodePage}
-                    onChange={(e) => setEditingNodePage(e.target.value)}
+                    onChange={(e) => {
+                      setEditingNodePage(e.target.value);
+                      setNodeEditingPostIndex(null);
+                      setSteveEditingPostIndex(null);
+                      setSteveComposePost(emptyPost());
+                    }}
                     className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-sm text-[#D4C4A8]"
                   >
                     <option value="steve">Steve (Investor Page)</option>
@@ -2282,32 +2406,43 @@ export default function OpsPortal() {
               </div>
 
               {/* ── Steve Page Editor ── */}
-              {isEditingSteve && (
-                <>
-                  {steveHasDraft() ? (
-                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#332A18]/60 border border-[#E8B84D]/20">
-                      <span className="w-2 h-2 rounded-full bg-[#E8B84D] animate-pulse" />
-                      <span className="text-xs text-[#E8B84D] font-semibold uppercase tracking-wider">Draft — not yet published</span>
+              {isEditingSteve && (() => {
+                const steveUpdates = getSteveUpdates();
+                const isEditing = steveEditingPostIndex !== null;
+                const composeHasContent = steveComposePost.narrative || steveComposePost.image_url || steveComposePost.video_url;
+                const composeKey = isEditing ? `edit-${steveEditingPostIndex}` : "new";
+
+                return (
+                <div key={composeKey}>
+                  {/* Compose / Edit area header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${isEditing ? "bg-[#E8B84D]" : "bg-[#5DBF82]"}`} />
+                      <span className={`text-xs font-semibold uppercase tracking-wider ${isEditing ? "text-[#E8B84D]" : "text-[#8B7B68]"}`}>
+                        {isEditing
+                          ? `Editing post from ${new Date(steveUpdates[steveEditingPostIndex!].date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                          : "New Post"}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#1A2E22]/60 border border-[#5DBF82]/20">
-                      <span className="w-2 h-2 rounded-full bg-[#5DBF82]" />
-                      <span className="text-xs text-[#5DBF82] font-semibold uppercase tracking-wider">Published — live on page</span>
-                    </div>
-                  )}
+                    {isEditing && (
+                      <button
+                        onClick={() => cancelEditingStevePost()}
+                        className="text-xs text-[#8B7B68] hover:text-[#D4C4A8] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
 
                   <div className="mb-6">
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Narrative Message
                     </div>
                     <InlineTextarea
-                      value={siteContent.steve_draft_narrative || siteContent.steve_narrative || ""}
+                      value={steveComposePost.narrative}
                       placeholder="Write a personal message for Steve..."
                       rows={4}
-                      onCommit={async (val) => {
-                        setSiteContent((prev) => ({ ...prev, steve_draft_narrative: val }));
-                        await supabase.from("site_content").upsert({ key: "steve_draft_narrative", value: val, updated_at: new Date().toISOString() });
-                      }}
+                      onCommit={(val) => setSteveComposePost(prev => ({ ...prev, narrative: val }))}
                     />
                   </div>
 
@@ -2315,18 +2450,15 @@ export default function OpsPortal() {
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Image
                     </div>
-                    {(siteContent.steve_draft_image_url || siteContent.steve_image_url) ? (
+                    {steveComposePost.image_url ? (
                       <div className="space-y-2">
                         <img
-                          src={siteContent.steve_draft_image_url || siteContent.steve_image_url}
+                          src={steveComposePost.image_url}
                           alt="Steve page image"
                           className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
                         />
                         <button
-                          onClick={async () => {
-                            setSiteContent((prev) => ({ ...prev, steve_draft_image_url: "" }));
-                            await supabase.from("site_content").upsert({ key: "steve_draft_image_url", value: "", updated_at: new Date().toISOString() });
-                          }}
+                          onClick={() => setSteveComposePost(prev => ({ ...prev, image_url: "" }))}
                           className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
                         >
                           Remove image
@@ -2351,9 +2483,7 @@ export default function OpsPortal() {
                                 return;
                               }
                               const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
-                              const publicUrl = urlData.publicUrl;
-                              setSiteContent((prev) => ({ ...prev, steve_draft_image_url: publicUrl }));
-                              await supabase.from("site_content").upsert({ key: "steve_draft_image_url", value: publicUrl, updated_at: new Date().toISOString() });
+                              setSteveComposePost(prev => ({ ...prev, image_url: urlData.publicUrl }));
                             } catch (err) {
                               alert(`Upload error: ${err}`);
                             }
@@ -2368,12 +2498,9 @@ export default function OpsPortal() {
                     )}
                     <div className="mt-2">
                       <InlineField
-                        value={siteContent.steve_draft_image_caption || siteContent.steve_image_caption || ""}
+                        value={steveComposePost.image_caption}
                         placeholder="Image caption (optional)"
-                        onCommit={async (val) => {
-                          setSiteContent((prev) => ({ ...prev, steve_draft_image_caption: val }));
-                          await supabase.from("site_content").upsert({ key: "steve_draft_image_caption", value: val, updated_at: new Date().toISOString() });
-                        }}
+                        onCommit={(val) => setSteveComposePost(prev => ({ ...prev, image_caption: val }))}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2384,16 +2511,13 @@ export default function OpsPortal() {
                       Video (YouTube or Vimeo URL)
                     </div>
                     <InlineField
-                      value={siteContent.steve_draft_video_url || siteContent.steve_video_url || ""}
+                      value={steveComposePost.video_url}
                       placeholder="Paste YouTube or Vimeo URL..."
-                      onCommit={async (val) => {
-                        setSiteContent((prev) => ({ ...prev, steve_draft_video_url: val }));
-                        await supabase.from("site_content").upsert({ key: "steve_draft_video_url", value: val, updated_at: new Date().toISOString() });
-                      }}
+                      onCommit={(val) => setSteveComposePost(prev => ({ ...prev, video_url: val }))}
                       className="text-sm text-[#D4C4A8]"
                     />
-                    {(siteContent.steve_draft_video_url || siteContent.steve_video_url) && (() => {
-                      const url = siteContent.steve_draft_video_url || siteContent.steve_video_url;
+                    {steveComposePost.video_url && (() => {
+                      const url = steveComposePost.video_url;
                       const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
                       const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
                       const embedUrl = ytMatch
@@ -2410,12 +2534,9 @@ export default function OpsPortal() {
                     })()}
                     <div className="mt-2">
                       <InlineField
-                        value={siteContent.steve_draft_video_caption || siteContent.steve_video_caption || ""}
+                        value={steveComposePost.video_caption}
                         placeholder="Video caption (optional)"
-                        onCommit={async (val) => {
-                          setSiteContent((prev) => ({ ...prev, steve_draft_video_caption: val }));
-                          await supabase.from("site_content").upsert({ key: "steve_draft_video_caption", value: val, updated_at: new Date().toISOString() });
-                        }}
+                        onCommit={(val) => setSteveComposePost(prev => ({ ...prev, video_caption: val }))}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2423,47 +2544,101 @@ export default function OpsPortal() {
 
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/[0.06]">
                     <span className="text-xs text-[#6B5D4D] italic">
-                      Changes auto-save as drafts. Click Publish to update the live page.
+                      {isEditing ? "Editing existing post. Save or cancel." : "Compose a new post, then publish."}
                     </span>
                     <button
                       onClick={() => {
-                        if (confirm("Publish this update? Current live content will be archived.")) {
-                          publishStevePage();
+                        if (isEditing) {
+                          saveExistingStevePost(steveEditingPostIndex!);
+                        } else if (confirm("Publish this new post?")) {
+                          publishNewStevePost();
                         }
                       }}
-                      disabled={!(steveHasDraft() || siteContent.steve_narrative || siteContent.steve_image_url || siteContent.steve_video_url)}
+                      disabled={!composeHasContent}
                       className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
                     >
-                      {steveHasDraft() ? "Publish Update" : "Republish"}
+                      {isEditing ? "Save Changes" : "Publish Post"}
                     </button>
                   </div>
-                </>
-              )}
 
-              {/* ── Node Page Editor ── */}
-              {!isEditingSteve && editingNode && (
-                <>
-                  {nodeHasDraft(editingNode.id) ? (
-                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#332A18]/60 border border-[#E8B84D]/20">
-                      <span className="w-2 h-2 rounded-full bg-[#E8B84D] animate-pulse" />
-                      <span className="text-xs text-[#E8B84D] font-semibold uppercase tracking-wider">Draft — not yet published</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-[#1A2E22]/60 border border-[#5DBF82]/20">
-                      <span className="w-2 h-2 rounded-full bg-[#5DBF82]" />
-                      <span className="text-xs text-[#5DBF82] font-semibold uppercase tracking-wider">Published — live on page</span>
+                  {/* ── Published Posts List ── */}
+                  {steveUpdates.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-white/[0.06]">
+                      <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-3">
+                        Published Posts
+                      </div>
+                      <div className="space-y-3">
+                        {steveUpdates.map((post, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] transition-colors">
+                            {post.image_url && (
+                              <img src={post.image_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs text-[#6B5D4D]">
+                                  {new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                                {i === 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#5DBF82]/20 text-[#5DBF82] font-semibold uppercase">Current</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-[#A89878] line-clamp-2">{post.narrative || "(no text)"}</p>
+                            </div>
+                            <button
+                              onClick={() => startEditingStevePost(i)}
+                              disabled={steveEditingPostIndex === i}
+                              className="text-xs text-[#C47A3A] hover:text-[#E8B84D] transition-colors flex-shrink-0 disabled:opacity-30"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
+                </div>
+                );
+              })()}
+
+              {/* ── Node Page Editor ── */}
+              {!isEditingSteve && editingNode && (() => {
+                const nodeUpdates = npc?.updates || [];
+                const isEditing = nodeEditingPostIndex !== null;
+                const compose = nodeComposePost[editingNode.id] || emptyPost();
+                const composeHasContent = compose.narrative || compose.image_url || compose.video_url;
+                const composeKey = `${editingNode.id}-${isEditing ? `edit-${nodeEditingPostIndex}` : "new"}`;
+
+                return (
+                <div key={composeKey}>
+                  {/* Compose / Edit area header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${isEditing ? "bg-[#E8B84D]" : "bg-[#5DBF82]"}`} />
+                      <span className={`text-xs font-semibold uppercase tracking-wider ${isEditing ? "text-[#E8B84D]" : "text-[#8B7B68]"}`}>
+                        {isEditing
+                          ? `Editing post from ${new Date(nodeUpdates[nodeEditingPostIndex!].date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                          : "New Post"}
+                      </span>
+                    </div>
+                    {isEditing && (
+                      <button
+                        onClick={() => cancelEditingNodePost(editingNode.id)}
+                        className="text-xs text-[#8B7B68] hover:text-[#D4C4A8] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
 
                   <div className="mb-6">
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Narrative Message
                     </div>
                     <InlineTextarea
-                      value={npc?.draft_narrative ?? npc?.narrative ?? ""}
+                      value={compose.narrative}
                       placeholder={`Write a personal message for the ${editingNode.name} node leader...`}
                       rows={4}
-                      onCommit={(val) => saveDraftNodePageField(editingNode.id, "narrative", val)}
+                      onCommit={(val) => setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), narrative: val } }))}
                     />
                   </div>
 
@@ -2471,15 +2646,15 @@ export default function OpsPortal() {
                     <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-2">
                       Image
                     </div>
-                    {(npc?.draft_image_url ?? npc?.image_url) ? (
+                    {compose.image_url ? (
                       <div className="space-y-2">
                         <img
-                          src={(npc?.draft_image_url ?? npc?.image_url)!}
+                          src={compose.image_url}
                           alt={`${editingNode.name} page image`}
                           className="max-h-48 rounded-lg border border-white/[0.08] object-cover"
                         />
                         <button
-                          onClick={() => saveDraftNodePageField(editingNode.id, "image_url", "")}
+                          onClick={() => setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), image_url: "" } }))}
                           className="text-xs text-[#D45A5A] hover:text-[#E87070] bg-transparent border-none cursor-pointer"
                         >
                           Remove image
@@ -2504,8 +2679,7 @@ export default function OpsPortal() {
                                 return;
                               }
                               const { data: urlData } = supabase.storage.from("public-media").getPublicUrl(path);
-                              const publicUrl = urlData.publicUrl;
-                              await saveDraftNodePageField(editingNode.id, "image_url", publicUrl);
+                              setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), image_url: urlData.publicUrl } }));
                             } catch (err) {
                               alert(`Upload error: ${err}`);
                             }
@@ -2520,9 +2694,9 @@ export default function OpsPortal() {
                     )}
                     <div className="mt-2">
                       <InlineField
-                        value={npc?.draft_image_caption ?? npc?.image_caption ?? ""}
+                        value={compose.image_caption}
                         placeholder="Image caption (optional)"
-                        onCommit={(val) => saveDraftNodePageField(editingNode.id, "image_caption", val)}
+                        onCommit={(val) => setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), image_caption: val } }))}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2533,13 +2707,13 @@ export default function OpsPortal() {
                       Video (YouTube or Vimeo URL)
                     </div>
                     <InlineField
-                      value={npc?.draft_video_url ?? npc?.video_url ?? ""}
+                      value={compose.video_url}
                       placeholder="Paste YouTube or Vimeo URL..."
-                      onCommit={(val) => saveDraftNodePageField(editingNode.id, "video_url", val)}
+                      onCommit={(val) => setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), video_url: val } }))}
                       className="text-sm text-[#D4C4A8]"
                     />
-                    {(npc?.draft_video_url ?? npc?.video_url) && (() => {
-                      const url = (npc?.draft_video_url ?? npc?.video_url)!;
+                    {compose.video_url && (() => {
+                      const url = compose.video_url;
                       const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
                       const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
                       const embedUrl = ytMatch
@@ -2556,9 +2730,9 @@ export default function OpsPortal() {
                     })()}
                     <div className="mt-2">
                       <InlineField
-                        value={npc?.draft_video_caption ?? npc?.video_caption ?? ""}
+                        value={compose.video_caption}
                         placeholder="Video caption (optional)"
-                        onCommit={(val) => saveDraftNodePageField(editingNode.id, "video_caption", val)}
+                        onCommit={(val) => setNodeComposePost(prev => ({ ...prev, [editingNode.id]: { ...(prev[editingNode.id] || emptyPost()), video_caption: val } }))}
                         className="text-sm text-[#8B7B68]"
                       />
                     </div>
@@ -2566,22 +2740,61 @@ export default function OpsPortal() {
 
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/[0.06]">
                     <span className="text-xs text-[#6B5D4D] italic">
-                      Changes auto-save as drafts. Click Publish to update the live page.
+                      {isEditing ? "Editing existing post. Save or cancel." : "Compose a new post, then publish."}
                     </span>
                     <button
                       onClick={() => {
-                        if (confirm("Publish this update? Current live content will be archived.")) {
-                          publishNodePage(editingNode.id);
+                        if (isEditing) {
+                          saveExistingNodePost(editingNode.id, nodeEditingPostIndex!);
+                        } else if (confirm("Publish this new post?")) {
+                          publishNewNodePost(editingNode.id);
                         }
                       }}
-                      disabled={!(nodeHasDraft(editingNode.id) || npc?.narrative || npc?.image_url || npc?.video_url)}
+                      disabled={!composeHasContent}
                       className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
                     >
-                      {nodeHasDraft(editingNode.id) ? "Publish Update" : "Republish"}
+                      {isEditing ? "Save Changes" : "Publish Post"}
                     </button>
                   </div>
-                </>
-              )}
+
+                  {/* ── Published Posts List ── */}
+                  {nodeUpdates.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-white/[0.06]">
+                      <div className="text-[11px] text-[#8B7B68] uppercase tracking-wider font-semibold mb-3">
+                        Published Posts
+                      </div>
+                      <div className="space-y-3">
+                        {nodeUpdates.map((post, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] transition-colors">
+                            {post.image_url && (
+                              <img src={post.image_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs text-[#6B5D4D]">
+                                  {new Date(post.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </span>
+                                {i === 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#5DBF82]/20 text-[#5DBF82] font-semibold uppercase">Current</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-[#A89878] line-clamp-2">{post.narrative || "(no text)"}</p>
+                            </div>
+                            <button
+                              onClick={() => startEditingNodePost(editingNode.id, i)}
+                              disabled={nodeEditingPostIndex === i}
+                              className="text-xs text-[#C47A3A] hover:text-[#E8B84D] transition-colors flex-shrink-0 disabled:opacity-30"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
             </div>
           </div>
           );

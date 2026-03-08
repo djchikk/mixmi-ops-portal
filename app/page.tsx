@@ -2431,10 +2431,10 @@ export default function OpsPortal() {
                           publishStevePage();
                         }
                       }}
-                      disabled={!steveHasDraft()}
+                      disabled={!(steveHasDraft() || siteContent.steve_narrative || siteContent.steve_image_url || siteContent.steve_video_url)}
                       className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
                     >
-                      Publish Update
+                      {steveHasDraft() ? "Publish Update" : "Republish"}
                     </button>
                   </div>
                 </>
@@ -2574,10 +2574,10 @@ export default function OpsPortal() {
                           publishNodePage(editingNode.id);
                         }
                       }}
-                      disabled={!nodeHasDraft(editingNode.id)}
+                      disabled={!(nodeHasDraft(editingNode.id) || npc?.narrative || npc?.image_url || npc?.video_url)}
                       className="px-5 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-[#C47A3A] hover:bg-[#D4884A] text-white"
                     >
-                      Publish Update
+                      {nodeHasDraft(editingNode.id) ? "Publish Update" : "Republish"}
                     </button>
                   </div>
                 </>
